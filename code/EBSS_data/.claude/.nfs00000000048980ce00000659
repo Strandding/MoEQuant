@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(CUDA_VISIBLE_DEVICES=0,2,3 python:*)"
+    ]
+  }
+}

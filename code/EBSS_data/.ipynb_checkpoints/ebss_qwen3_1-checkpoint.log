@@ -1,0 +1,24 @@
+`torch_dtype` is deprecated! Use `dtype` instead!
+The fast path is not available because one of the required library is not installed. Falling back to torch implementation. To install follow https://github.com/fla-org/flash-linear-attention#installation and https://github.com/Dao-AILab/causal-conv1d
+[EBSS] Loading model: /dataset/common/pretrain_model/Qwen3-Next-80B-A3B-Instruct
+[EBSS] Loading model with device_map='auto' for multi-GPU support...
+Loading checkpoint shards:   0%|          | 0/41 [00:00<?, ?it/s]Loading checkpoint shards:   2%|▏         | 1/41 [00:01<00:45,  1.13s/it]Loading checkpoint shards:   5%|▍         | 2/41 [00:02<00:46,  1.20s/it]Loading checkpoint shards:   7%|▋         | 3/41 [00:03<00:45,  1.20s/it]Loading checkpoint shards:  10%|▉         | 4/41 [00:04<00:44,  1.21s/it]Loading checkpoint shards:  12%|█▏        | 5/41 [00:05<00:43,  1.20s/it]Loading checkpoint shards:  15%|█▍        | 6/41 [00:07<00:41,  1.19s/it]Loading checkpoint shards:  17%|█▋        | 7/41 [00:08<00:44,  1.30s/it]Loading checkpoint shards:  20%|█▉        | 8/41 [00:09<00:41,  1.25s/it]Loading checkpoint shards:  22%|██▏       | 9/41 [00:11<00:39,  1.22s/it]Loading checkpoint shards:  24%|██▍       | 10/41 [00:12<00:37,  1.20s/it]Loading checkpoint shards:  27%|██▋       | 11/41 [00:13<00:35,  1.19s/it]Loading checkpoint shards:  29%|██▉       | 12/41 [00:14<00:35,  1.22s/it]Loading checkpoint shards:  32%|███▏      | 13/41 [00:15<00:33,  1.20s/it]Loading checkpoint shards:  34%|███▍      | 14/41 [00:17<00:32,  1.22s/it]Loading checkpoint shards:  37%|███▋      | 15/41 [00:18<00:30,  1.18s/it]Loading checkpoint shards:  39%|███▉      | 16/41 [00:19<00:29,  1.20s/it]Loading checkpoint shards:  41%|████▏     | 17/41 [00:20<00:28,  1.19s/it]Loading checkpoint shards:  44%|████▍     | 18/41 [00:21<00:27,  1.22s/it]Loading checkpoint shards:  46%|████▋     | 19/41 [00:23<00:26,  1.22s/it]Loading checkpoint shards:  49%|████▉     | 20/41 [00:24<00:29,  1.43s/it]Loading checkpoint shards:  51%|█████     | 21/41 [00:26<00:26,  1.35s/it]Loading checkpoint shards:  54%|█████▎    | 22/41 [00:27<00:25,  1.32s/it]Loading checkpoint shards:  56%|█████▌    | 23/41 [00:28<00:23,  1.29s/it]Loading checkpoint shards:  59%|█████▊    | 24/41 [00:29<00:21,  1.26s/it]Loading checkpoint shards:  61%|██████    | 25/41 [00:31<00:20,  1.26s/it]Loading checkpoint shards:  63%|██████▎   | 26/41 [00:32<00:18,  1.24s/it]Loading checkpoint shards:  66%|██████▌   | 27/41 [00:34<00:21,  1.51s/it]Loading checkpoint shards:  68%|██████▊   | 28/41 [00:35<00:18,  1.42s/it]Loading checkpoint shards:  71%|███████   | 29/41 [00:36<00:16,  1.35s/it]Loading checkpoint shards:  73%|███████▎  | 30/41 [00:37<00:14,  1.31s/it]Loading checkpoint shards:  76%|███████▌  | 31/41 [00:39<00:12,  1.27s/it]Loading checkpoint shards:  78%|███████▊  | 32/41 [00:40<00:11,  1.25s/it]Loading checkpoint shards:  80%|████████  | 33/41 [00:41<00:10,  1.26s/it]Loading checkpoint shards:  83%|████████▎ | 34/41 [00:43<00:09,  1.37s/it]Loading checkpoint shards:  85%|████████▌ | 35/41 [00:44<00:07,  1.32s/it]Loading checkpoint shards:  88%|████████▊ | 36/41 [00:45<00:06,  1.28s/it]Loading checkpoint shards:  90%|█████████ | 37/41 [00:46<00:05,  1.25s/it]Loading checkpoint shards:  93%|█████████▎| 38/41 [00:48<00:03,  1.23s/it]Loading checkpoint shards:  95%|█████████▌| 39/41 [00:49<00:02,  1.22s/it]Loading checkpoint shards:  98%|█████████▊| 40/41 [00:55<00:02,  2.80s/it]Loading checkpoint shards: 100%|██████████| 41/41 [00:55<00:00,  1.36s/it]
+[EBSS] Model loaded with device_map='auto' and attn_implementation=sdpa.
+[EBSS] Input device: cuda:0
+[EBSS] Hooked candidate router/gate Linear layers: 48
+[EBSS] Example layer names:
+model.layers.0.mlp.gate
+model.layers.1.mlp.gate
+model.layers.2.mlp.gate
+model.layers.3.mlp.gate
+model.layers.4.mlp.gate
+model.layers.5.mlp.gate
+model.layers.6.mlp.gate
+model.layers.7.mlp.gate
+model.layers.8.mlp.gate
+model.layers.9.mlp.gate
+... (+38 more)
+[EBSS] Building CJK banned token list for vocab_size=151643 ...
+[EBSS] Banned CJK-like tokens: 25965
+EBSS (min):   0%|          | 0/4800 [00:00<?, ?sent/s]/export/home2/zihan/miniconda3/envs/moe/lib/python3.11/site-packages/torch/nn/modules/conv.py:306: UserWarning: Applied workaround for CuDNN issue, install nvrtc.so (Triggered internally at ../aten/src/ATen/native/cudnn/Conv_v8.cpp:80.)
+  return F.conv1d(input, weight, bias, self.stride,

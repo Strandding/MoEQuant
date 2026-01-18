@@ -1,0 +1,2 @@
+Requirement already satisfied: triton in /export/home2/zihan/miniconda3/envs/moe/lib/python3.11/site-packages (2.2.0)
+Requirement already satisfied: filelock in /export/home2/zihan/.local/lib/python3.11/site-packages (from triton) (3.20.3)
