@@ -270,6 +270,12 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
     attention_mask = cache['attention_mask']
     position_ids = cache['position_ids']
 
+    # Ensure attention_mask and position_ids are on dev
+    if attention_mask is not None and attention_mask.device != dev:
+        attention_mask = attention_mask.to(dev)
+    if position_ids is not None and position_ids.device != dev:
+        position_ids = position_ids.to(dev)
+
     quantizers = {}
     # sequential = [
     #             ['self_attn.k_proj.module', 'self_attn.v_proj.module', 'self_attn.q_proj.module'],
@@ -279,7 +285,18 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
     #         ]
     for i in range(len(layers)):
         print(f'\nLayer {i}:', flush=True, end=' ')
-        layer = layers[i]#.to(dev)
+        # Move layer to dev and ensure all submodules are on the same device
+        layer = layers[i].to(dev)
+        # Verify device placement
+        for name, param in layer.named_parameters():
+            if param.device != dev:
+                logging.warning(f'Parameter {name} is on {param.device}, moving to {dev}')
+                param.data = param.data.to(dev)
+        for name, buf in layer.named_buffers():
+            if buf.device != dev:
+                logging.warning(f'Buffer {name} is on {buf.device}, moving to {dev}')
+                buf.data = buf.data.to(dev)
+
         full = quant_utils.find_qlayers(layer, layers=[torch.nn.Linear])
         if 'deepseek' in args.model.lower() and i>=1:
             full['mlp.gate'] = model.model.layers[i].mlp.gate
@@ -382,6 +399,27 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
                 if name.endswith('.gate') or name.endswith('shared_expert_gate'):
                     # print(f'(Skipping Router {name})', end='  ', flush=True)
                     continue
+
+                # [新增] 专家编号过滤：只量化0号专家
+                # 解析专家编号，格式如 mlp.experts.0.gate_proj 或 block_sparse_moe.experts.0.w1
+                if 'mlp.experts.' in name or 'block_sparse_moe.experts.' in name:
+                    try:
+                        # 提取专家编号
+                        parts = name.split('.')
+                        expert_idx = -1
+                        for idx, part in enumerate(parts):
+                            if part == 'experts' and idx + 1 < len(parts):
+                                expert_idx = int(parts[idx + 1])
+                                break
+
+                        # 只量化0号专家，跳过其他专家
+                        if expert_idx not in [0]:
+                            # print(f'(Skipping expert {expert_idx}: {name})', end='  ', flush=True)
+                            continue
+                    except (ValueError, IndexError):
+                        # 如果无法解析专家编号，保险起见跳过
+                        print(f'(Warning: Cannot parse expert index from {name}, skipping)', end='  ', flush=True)
+                        continue
                 # -----------------------------------------------------------
 
                 print(f'{name}', end='  ', flush=True)
@@ -513,10 +551,11 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
         for j in range(args.nsamples):
             outs[j] = layer(inps[j].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids)[0]
 
-        # layers[i] = layer.cpu()
+        # Move layer to CPU to save GPU memory in multi-GPU scenarios
+        # This is important for large models distributed across multiple GPUs
         layers[i] = layer
-        del layer
-        del gptq 
+        # del layer
+        del gptq
         torch.cuda.empty_cache()
 
         inps, outs = outs, inps

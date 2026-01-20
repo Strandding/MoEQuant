@@ -206,6 +206,11 @@ class QuantRMSNorm(nn.Module):
             else:
                 weight = self.weight
                 bias = self.bias if hasattr(self, "bias") else None
+
+            # Ensure weight is on the same device as hidden_states
+            if weight.device != hidden_states.device:
+                weight = weight.to(hidden_states.device)
+
             out = (
                 (weight * hidden_states.to(i_dtype) + bias.to(i_dtype))
                 if bias is not None

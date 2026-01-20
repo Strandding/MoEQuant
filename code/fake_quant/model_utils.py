@@ -151,7 +151,7 @@ def get_qwen(model_name, hf_token, args):
         torch_dtype=torch.float16,
         use_auth_token=hf_token,
         attn_implementation="eager",
-        device_map='cuda',
+        device_map='auto',
         trust_remote_code=True
     )
 

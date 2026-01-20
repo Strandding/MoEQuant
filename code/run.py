@@ -38,7 +38,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="多 GPU 显存占用脚本")
     parser.add_argument("devices", type=int, nargs='+', help="GPU 编号列表")
-    parser.add_argument("--size", type=int, default=75, help="每张卡的 GB 大小")
+    parser.add_argument("--size", type=int, default=39, help="每张卡的 GB 大小")
     
     args = parser.parse_args()
 

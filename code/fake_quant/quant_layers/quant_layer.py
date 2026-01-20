@@ -497,9 +497,10 @@ class QuantDecoderLayer(nn.Module):
         # 2. Normal Experts (普通专家)
         # 使用 len(self.mlp.experts) 动态获取专家数量，替代原代码中的 range(60)
         for i in range(len(self.mlp.experts)):
-            self.mlp.experts[i].gate_proj.use_weight_quant = use_weight_quant
-            self.mlp.experts[i].up_proj.use_weight_quant = use_weight_quant
-            self.mlp.experts[i].down_proj.use_weight_quant = use_weight_quant
+            if i in [0]:
+                self.mlp.experts[i].gate_proj.use_weight_quant = use_weight_quant
+                self.mlp.experts[i].up_proj.use_weight_quant = use_weight_quant
+                self.mlp.experts[i].down_proj.use_weight_quant = use_weight_quant
 
         # -------------------------------------------
         # B. 激活量化设置 (Activation Quantization)
