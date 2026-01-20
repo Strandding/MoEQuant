@@ -37,7 +37,7 @@ Arguments:
  'rotate': False,
  'rotate_mode': 'hadamard',
  'rotation_seed': -1,
- 'save_name': '20260120_164854',
+ 'save_name': '20260120_180713',
  'save_path': './log',
  'save_qmodel_path': None,
  'seed': 0,
@@ -63,6 +63,3 @@ Arguments:
  'wandb_project': None}
 ------------------------------------------------------------
 ---> Loading model with device_map=auto for multi-GPU support...
----> Loading /dataset/common/pretrain_model/Qwen3-30B-A3B-Base Model (class: Qwen3MoeForCausalLM) with seq_len: 2048
----> Using model-level rotary_emb for quantization
----> Wrapped 48 layers, device distribution: {'cuda:0': 24, 'cuda:1': 24}

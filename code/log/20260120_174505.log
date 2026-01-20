@@ -37,7 +37,7 @@ Arguments:
  'rotate': False,
  'rotate_mode': 'hadamard',
  'rotation_seed': -1,
- 'save_name': '20260120_164854',
+ 'save_name': '20260120_174505',
  'save_path': './log',
  'save_qmodel_path': None,
  'seed': 0,

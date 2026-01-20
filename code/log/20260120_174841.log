@@ -27,8 +27,8 @@ Arguments:
  'layer_idx': 10,
  'lm_eval': False,
  'lm_eval_batch_size': 32,
- 'load_qmodel_path': '/dataset/common/quant_model/moequant_qwen3moe_base_w3_myebss.pth',
- 'model': '/dataset/common/pretrain_model/Qwen3-30B-A3B-Base',
+ 'load_qmodel_path': '/dataset/common/quant_model/moequant_qwen15_base_w2_myebss.pth',
+ 'model': '/dataset/common/pretrain_model/Qwen1.5-MoE-A2.7B',
  'nsamples': 128,
  'online_hadamard': False,
  'percdamp': 0.01,
@@ -37,7 +37,7 @@ Arguments:
  'rotate': False,
  'rotate_mode': 'hadamard',
  'rotation_seed': -1,
- 'save_name': '20260120_164854',
+ 'save_name': '20260120_174841',
  'save_path': './log',
  'save_qmodel_path': None,
  'seed': 0,
@@ -54,7 +54,7 @@ Arguments:
  'v_clip_ratio': 1.0,
  'v_groupsize': -1,
  'w_asym': False,
- 'w_bits': 3,
+ 'w_bits': 2,
  'w_clip': False,
  'w_groupsize': -1,
  'w_rtn': False,
@@ -63,6 +63,6 @@ Arguments:
  'wandb_project': None}
 ------------------------------------------------------------
 ---> Loading model with device_map=auto for multi-GPU support...
----> Loading /dataset/common/pretrain_model/Qwen3-30B-A3B-Base Model (class: Qwen3MoeForCausalLM) with seq_len: 2048
+---> Loading /dataset/common/pretrain_model/Qwen1.5-MoE-A2.7B Model (class: Qwen2MoeForCausalLM) with seq_len: 2048
 ---> Using model-level rotary_emb for quantization
----> Wrapped 48 layers, device distribution: {'cuda:0': 24, 'cuda:1': 24}
+---> Wrapped 24 layers, device distribution: {'cuda:0': 12, 'cuda:1': 12}

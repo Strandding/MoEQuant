@@ -183,9 +183,10 @@ class QuantMoeBlock(nn.Module):
         return final_hidden_states, router_logits
 
 class QuantAttention(nn.Module):
-    def __init__(self, org_module: LlamaAttention, config: LlamaConfig, args):
+    def __init__(self, org_module: LlamaAttention, config: LlamaConfig, args, is_qwen3_style: bool = False):
         super().__init__()
 
+        self._is_qwen3_style = is_qwen3_style
         self.layer_idx = org_module.layer_idx
         self.hidden_size = config.hidden_size
         self.num_heads = config.num_attention_heads
@@ -268,7 +269,9 @@ class QuantAttention(nn.Module):
         past_key_value: Optional[Cache] = None,
         output_attentions: bool = False,
         use_cache: bool = False,
-    ):  
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # (cos, sin) for new transformers
+        **kwargs,
+    ):
         bsz, q_len, _ = hidden_states.size()
 
         query_states = self.q_proj(hidden_states)
@@ -294,19 +297,27 @@ class QuantAttention(nn.Module):
             # get_usable_length 返回 cache 中可用的长度
             cache_length = past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
             kv_seq_len += cache_length
-        # transformers 4.40.0 Qwen2MoeRotaryEmbedding.forward() takes (x, position_ids)
-        # Multi-GPU support: rotary_emb might be on a different device (shared at model level)
-        try:
-            rotary_device = next(self.rotary_emb.parameters()).device
-        except StopIteration:
-            # rotary_emb might not have parameters (e.g., uses buffers instead)
-            rotary_device = value_states.device
 
-        if value_states.device != rotary_device:
-            cos, sin = self.rotary_emb(value_states.to(rotary_device), position_ids.to(rotary_device))
-            cos, sin = cos.to(query_states.device), sin.to(query_states.device)
+        # Qwen3-style: use position_embeddings (passed from model level, transformers 4.51+)
+        # Qwen2-style (Qwen1.5/Qwen2): use position_ids + internal rotary_emb
+        if self._is_qwen3_style and position_embeddings is not None:
+            cos, sin = position_embeddings
+            cos = cos.to(query_states.device)
+            sin = sin.to(query_states.device)
         else:
-            cos, sin = self.rotary_emb(value_states, position_ids)
+            # transformers 4.40.0 Qwen2MoeRotaryEmbedding.forward() takes (x, position_ids)
+            # Multi-GPU support: rotary_emb might be on a different device (shared at model level)
+            try:
+                rotary_device = next(self.rotary_emb.parameters()).device
+            except StopIteration:
+                # rotary_emb might not have parameters (e.g., uses buffers instead)
+                rotary_device = value_states.device
+
+            if value_states.device != rotary_device:
+                cos, sin = self.rotary_emb(value_states.to(rotary_device), position_ids.to(rotary_device))
+                cos, sin = cos.to(query_states.device), sin.to(query_states.device)
+            else:
+                cos, sin = self.rotary_emb(value_states, position_ids)
         rotary_matrix = build_rotary_matrix(cos, sin).to(query_states.device)
 
         key_states = self.ropek(key_states, rotary_matrix).transpose(
@@ -342,7 +353,15 @@ class QuantDecoderLayer(nn.Module):
     def __init__(self, config: LlamaConfig, ori_layer: LlamaDecoderLayer, args):
         super().__init__()
         self.hidden_size = config.hidden_size
-        self.self_attn = QuantAttention(ori_layer.self_attn, config=config, args=args)
+
+        # Detect if original layer is Qwen3-style (returns single tensor, uses position_embeddings)
+        # or Qwen2-style (returns tuple, uses rotary_emb internally)
+        ori_layer_name = ori_layer.__class__.__name__
+        self._is_qwen3_style = 'Qwen3Moe' in ori_layer_name or 'Qwen3Next' in ori_layer_name
+        # Qwen3 expects single tensor return; Qwen2/Mixtral expects tuple return
+        self._return_single_tensor = self._is_qwen3_style
+
+        self.self_attn = QuantAttention(ori_layer.self_attn, config=config, args=args, is_qwen3_style=self._is_qwen3_style)
         self.mlp = QuantMoeBlock(ori_layer.mlp, config=config, args=args)
         self.input_layernorm = QuantRMSNorm(
             ori_layer.input_layernorm, args.norm_quant_params
@@ -366,6 +385,7 @@ class QuantDecoderLayer(nn.Module):
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cur_sample: int = 0,
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,  # (cos, sin) for new transformers
         **kwargs,
     ) -> Tuple[
         torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]
@@ -387,7 +407,12 @@ class QuantDecoderLayer(nn.Module):
                 If set to `True`, `past_key_values` key value states are returned and can be used to speed up decoding
                 (see `past_key_values`).
             past_key_value (`Tuple(torch.FloatTensor)`, *optional*): cached past key and value projection states
+            position_embeddings (`tuple(torch.FloatTensor)`, *optional*): (cos, sin) position embeddings for new transformers
         """
+        # Handle case where hidden_states might be a tuple from previous layer (Qwen2 compatibility)
+        if isinstance(hidden_states, tuple):
+            hidden_states = hidden_states[0]
+
         # Multi-GPU support: ensure inputs are on the same device as this layer
         layer_device = self.input_layernorm.weight.device
         if hidden_states.device != layer_device:
@@ -409,6 +434,7 @@ class QuantDecoderLayer(nn.Module):
             past_key_value=past_key_value,
             output_attentions=output_attentions,
             use_cache=use_cache,
+            position_embeddings=position_embeddings,
         )
         hidden_states = self.resadd1(residual, hidden_states)
         # Fully Connected
@@ -417,12 +443,19 @@ class QuantDecoderLayer(nn.Module):
         hidden_states = self.mlp(hidden_states,cur_sample)[0]
         hidden_states = self.resadd2(residual, hidden_states)
 
-        outputs = (hidden_states,)
-        if output_attentions:
-            outputs += (self_attn_weights,)
-        if use_cache:
-            outputs += (present_key_value,)
-        return outputs
+        # Return format compatibility:
+        # - Qwen3/Qwen3-Next: always return single tensor (model does: hidden_states = decoder_layer(...))
+        # - Qwen2/Mixtral/etc.: return tuple (model does: layer_outputs = decoder_layer(...); hidden_states = layer_outputs[0])
+        if self._return_single_tensor:
+            return hidden_states
+        else:
+            # Old interface: return tuple
+            outputs = (hidden_states,)
+            if output_attentions:
+                outputs += (self_attn_weights,)
+            if use_cache:
+                outputs += (present_key_value,)
+            return outputs
 
     # def set_quant_state(
     #     self,
