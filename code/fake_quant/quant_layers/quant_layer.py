@@ -295,7 +295,18 @@ class QuantAttention(nn.Module):
             cache_length = past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
             kv_seq_len += cache_length
         # transformers 4.40.0 Qwen2MoeRotaryEmbedding.forward() takes (x, position_ids)
-        cos, sin = self.rotary_emb(value_states, position_ids)
+        # Multi-GPU support: rotary_emb might be on a different device (shared at model level)
+        try:
+            rotary_device = next(self.rotary_emb.parameters()).device
+        except StopIteration:
+            # rotary_emb might not have parameters (e.g., uses buffers instead)
+            rotary_device = value_states.device
+
+        if value_states.device != rotary_device:
+            cos, sin = self.rotary_emb(value_states.to(rotary_device), position_ids.to(rotary_device))
+            cos, sin = cos.to(query_states.device), sin.to(query_states.device)
+        else:
+            cos, sin = self.rotary_emb(value_states, position_ids)
         rotary_matrix = build_rotary_matrix(cos, sin).to(query_states.device)
 
         key_states = self.ropek(key_states, rotary_matrix).transpose(
@@ -377,6 +388,14 @@ class QuantDecoderLayer(nn.Module):
                 (see `past_key_values`).
             past_key_value (`Tuple(torch.FloatTensor)`, *optional*): cached past key and value projection states
         """
+        # Multi-GPU support: ensure inputs are on the same device as this layer
+        layer_device = self.input_layernorm.weight.device
+        if hidden_states.device != layer_device:
+            hidden_states = hidden_states.to(layer_device)
+        if attention_mask is not None and attention_mask.device != layer_device:
+            attention_mask = attention_mask.to(layer_device)
+        if position_ids is not None and position_ids.device != layer_device:
+            position_ids = position_ids.to(layer_device)
 
         residual = hidden_states
 
@@ -497,10 +516,10 @@ class QuantDecoderLayer(nn.Module):
         # 2. Normal Experts (普通专家)
         # 使用 len(self.mlp.experts) 动态获取专家数量，替代原代码中的 range(60)
         for i in range(len(self.mlp.experts)):
-            if i in [0]:
-                self.mlp.experts[i].gate_proj.use_weight_quant = use_weight_quant
-                self.mlp.experts[i].up_proj.use_weight_quant = use_weight_quant
-                self.mlp.experts[i].down_proj.use_weight_quant = use_weight_quant
+            # if i in [0]:
+            self.mlp.experts[i].gate_proj.use_weight_quant = use_weight_quant
+            self.mlp.experts[i].up_proj.use_weight_quant = use_weight_quant
+            self.mlp.experts[i].down_proj.use_weight_quant = use_weight_quant
 
         # -------------------------------------------
         # B. 激活量化设置 (Activation Quantization)

@@ -37,7 +37,7 @@ Arguments:
  'rotate': False,
  'rotate_mode': 'hadamard',
  'rotation_seed': -1,
- 'save_name': '20260120_142728',
+ 'save_name': '20260120_145842',
  'save_path': './log',
  'save_qmodel_path': '/dataset/common/quant_model/moequant_qwen15_base_w2_selfebss_nsample_4.pth',
  'seed': 0,
@@ -63,7 +63,7 @@ Arguments:
  'wandb_project': None}
 ------------------------------------------------------------
 `torch_dtype` is deprecated! Use `dtype` instead!
-Loading checkpoint shards:   0%|          | 0/8 [00:00<?, ?it/s]Loading checkpoint shards:  12%|█▎        | 1/8 [00:01<00:08,  1.16s/it]Loading checkpoint shards:  25%|██▌       | 2/8 [00:02<00:06,  1.12s/it]Loading checkpoint shards:  38%|███▊      | 3/8 [00:03<00:05,  1.09s/it]Loading checkpoint shards:  50%|█████     | 4/8 [00:04<00:04,  1.08s/it]Loading checkpoint shards:  62%|██████▎   | 5/8 [00:05<00:03,  1.07s/it]Loading checkpoint shards:  75%|███████▌  | 6/8 [00:06<00:02,  1.08s/it]Loading checkpoint shards:  88%|████████▊ | 7/8 [00:07<00:01,  1.08s/it]Loading checkpoint shards: 100%|██████████| 8/8 [00:07<00:00,  1.24it/s]Loading checkpoint shards: 100%|██████████| 8/8 [00:07<00:00,  1.02it/s]
+Loading checkpoint shards:   0%|          | 0/8 [00:00<?, ?it/s]Loading checkpoint shards:  12%|█▎        | 1/8 [00:01<00:07,  1.12s/it]Loading checkpoint shards:  25%|██▌       | 2/8 [00:02<00:06,  1.11s/it]Loading checkpoint shards:  38%|███▊      | 3/8 [00:03<00:05,  1.09s/it]Loading checkpoint shards:  50%|█████     | 4/8 [00:04<00:04,  1.09s/it]Loading checkpoint shards:  62%|██████▎   | 5/8 [00:05<00:03,  1.08s/it]Loading checkpoint shards:  75%|███████▌  | 6/8 [00:06<00:02,  1.05s/it]Loading checkpoint shards:  88%|████████▊ | 7/8 [00:07<00:01,  1.04s/it]Loading checkpoint shards: 100%|██████████| 8/8 [00:07<00:00,  1.29it/s]Loading checkpoint shards: 100%|██████████| 8/8 [00:07<00:00,  1.04it/s]
 ---> Loading /dataset/common/pretrain_model/Qwen1.5-MoE-A2.7B Model (class: Qwen2MoeForCausalLM) with seq_len: 2048
 ---> Using model-level rotary_emb for quantization
 Token indices sequence length is longer than the specified maximum sequence length for this model (299078 > 32768). Running this sequence through the model will result in indexing errors
@@ -83,19 +83,39 @@ Layer 9: mlp.experts.0.gate_proj  mlp.experts.0.up_proj  mlp.experts.0.down_proj
 Layer 10: mlp.experts.0.gate_proj  mlp.experts.0.up_proj  mlp.experts.0.down_proj  
 Layer 11: mlp.experts.0.gate_proj  mlp.experts.0.up_proj  mlp.experts.0.down_proj  
 Layer 12: mlp.experts.0.gate_proj  mlp.experts.0.up_proj  mlp.experts.0.down_proj  
-Layer 13: mlp.experts.0.gate_proj  mlp.experts.0.up_proj  Traceback (most recent call last):
-  File "/export/home2/zihan/MoEQuant/code/fake_quant/main.py", line 480, in <module>
+Layer 13: mlp.experts.0.gate_proj  mlp.experts.0.up_proj  mlp.experts.0.down_proj  
+Layer 14: mlp.experts.0.gate_proj  mlp.experts.0.up_proj  mlp.experts.0.down_proj  
+Layer 15: mlp.experts.0.gate_proj  mlp.experts.0.up_proj  mlp.experts.0.down_proj  
+Layer 16: mlp.experts.0.gate_proj  mlp.experts.0.up_proj  mlp.experts.0.down_proj  
+Layer 17: mlp.experts.0.gate_proj  mlp.experts.0.up_proj  mlp.experts.0.down_proj  
+Layer 18: mlp.experts.0.gate_proj  mlp.experts.0.up_proj  mlp.experts.0.down_proj  
+Layer 19: mlp.experts.0.gate_proj  mlp.experts.0.up_proj  mlp.experts.0.down_proj  
+Layer 20: mlp.experts.0.gate_proj  mlp.experts.0.up_proj  mlp.experts.0.down_proj  
+Layer 21: mlp.experts.0.gate_proj  mlp.experts.0.up_proj  mlp.experts.0.down_proj  
+Layer 22: mlp.experts.0.gate_proj  mlp.experts.0.up_proj  mlp.experts.0.down_proj  
+Layer 23: mlp.experts.0.gate_proj  mlp.experts.0.up_proj  mlp.experts.0.down_proj  GPU memory (from gptq_fwrd): 29.30 -> 29.30 GB (0.00 GB)
+-----GPTQ Quantization Done-----
+
+---> Redistributing model across GPUs for inference...
+  Layer 0 -> cuda:0
+  Layer 5 -> cuda:0
+  Layer 10 -> cuda:0
+  Layer 15 -> cuda:1
+  Layer 20 -> cuda:1
+---> Model redistributed: 24 layers across 2 GPUs
+Running PPL Evaluation...
+Evaluating PPL with Sliding Window (stride=512, total_len=299078)...
+PPL (Sliding):   0%|          | 0/585 [00:00<?, ?it/s]PPL (Sliding):   0%|          | 0/585 [00:00<?, ?it/s]
+Traceback (most recent call last):
+  File "/export/home2/zihan/MoEQuant/code/fake_quant/main.py", line 520, in <module>
     main()
-  File "/export/home2/zihan/MoEQuant/code/fake_quant/main.py", line 360, in main
-    quantizers = gptq_utils_moe.gptq_fwrd(model, tokenizer, trainloader, utils.DEV, args, bit_settings)
-                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/export/home2/zihan/MoEQuant/code/fake_quant/main.py", line 452, in main
+    ppl = eval_ppl_(model, test_loader, seqlen=2048, limit=-1, data_name='wiki')
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/export/home2/zihan/miniconda3/envs/moe/lib/python3.11/site-packages/torch/utils/_contextlib.py", line 115, in decorate_context
     return func(*args, **kwargs)
            ^^^^^^^^^^^^^^^^^^^^^
-  File "/export/home2/zihan/MoEQuant/code/fake_quant/gptq_utils_moe.py", line 499, in gptq_fwrd
-    gptq[name].free()
-  File "/export/home2/zihan/MoEQuant/code/fake_quant/gptq_utils_moe.py", line 174, in free
-    utils.cleanup_memory(verbos=False)
-  File "/export/home2/zihan/MoEQuant/code/fake_quant/utils.py", line 260, in cleanup_memory
-    gc.collect()
-KeyboardInterrupt
+  File "/export/home2/zihan/MoEQuant/code/fake_quant/main.py", line 153, in eval_ppl_
+    first_layer_device = next(model.model.layers[0].parameters()).device
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+StopIteration

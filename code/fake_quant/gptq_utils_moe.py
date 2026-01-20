@@ -393,33 +393,33 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
                     # print(f'(Skipping {name})', end='  ', flush=True)
                     continue
                 
-                # [新增] 额外过滤：排除 Router/Gate 路由权重
-                # 通常路由层的名字以 .gate 结尾 (如 block_sparse_moe.gate 或 mlp.gate)
-                # 而专家内部的 gate_proj 通常包含在 experts...gate_proj 中，不会被此条件误杀
-                if name.endswith('.gate') or name.endswith('shared_expert_gate'):
-                    # print(f'(Skipping Router {name})', end='  ', flush=True)
-                    continue
+                # # [新增] 额外过滤：排除 Router/Gate 路由权重
+                # # 通常路由层的名字以 .gate 结尾 (如 block_sparse_moe.gate 或 mlp.gate)
+                # # 而专家内部的 gate_proj 通常包含在 experts...gate_proj 中，不会被此条件误杀
+                # if name.endswith('.gate') or name.endswith('shared_expert_gate'):
+                #     # print(f'(Skipping Router {name})', end='  ', flush=True)
+                #     continue
 
-                # [新增] 专家编号过滤：只量化0号专家
-                # 解析专家编号，格式如 mlp.experts.0.gate_proj 或 block_sparse_moe.experts.0.w1
-                if 'mlp.experts.' in name or 'block_sparse_moe.experts.' in name:
-                    try:
-                        # 提取专家编号
-                        parts = name.split('.')
-                        expert_idx = -1
-                        for idx, part in enumerate(parts):
-                            if part == 'experts' and idx + 1 < len(parts):
-                                expert_idx = int(parts[idx + 1])
-                                break
+                # # [新增] 专家编号过滤：只量化0号专家
+                # # 解析专家编号，格式如 mlp.experts.0.gate_proj 或 block_sparse_moe.experts.0.w1
+                # if 'mlp.experts.' in name or 'block_sparse_moe.experts.' in name:
+                #     try:
+                #         # 提取专家编号
+                #         parts = name.split('.')
+                #         expert_idx = -1
+                #         for idx, part in enumerate(parts):
+                #             if part == 'experts' and idx + 1 < len(parts):
+                #                 expert_idx = int(parts[idx + 1])
+                #                 break
 
-                        # 只量化0号专家，跳过其他专家
-                        if expert_idx not in [0]:
-                            # print(f'(Skipping expert {expert_idx}: {name})', end='  ', flush=True)
-                            continue
-                    except (ValueError, IndexError):
-                        # 如果无法解析专家编号，保险起见跳过
-                        print(f'(Warning: Cannot parse expert index from {name}, skipping)', end='  ', flush=True)
-                        continue
+                #         # 只量化0号专家，跳过其他专家
+                #         if expert_idx not in [0] or 'gate_proj' in name or 'down_proj' in name:
+                #             # print(f'(Skipping expert {expert_idx}: {name})', end='  ', flush=True)
+                #             continue
+                #     except (ValueError, IndexError):
+                #         # 如果无法解析专家编号，保险起见跳过
+                #         print(f'(Warning: Cannot parse expert index from {name}, skipping)', end='  ', flush=True)
+                #         continue
                 # -----------------------------------------------------------
 
                 print(f'{name}', end='  ', flush=True)

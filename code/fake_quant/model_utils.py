@@ -145,7 +145,8 @@ def get_qwen(model_name, hf_token, args):
     torch.nn.init.uniform_ = skip
     torch.nn.init.normal_ = skip
 
-    # Use AutoModelForCausalLM with trust_remote_code=True to support Qwen1.5, Qwen2, and Qwen3
+    # Load model with device_map='auto' for multi-GPU support (required for large models like 80B)
+    logging.info('---> Loading model with device_map=auto for multi-GPU support...')
     model = transformers.AutoModelForCausalLM.from_pretrained(
         model_name,
         torch_dtype=torch.float16,
@@ -215,11 +216,30 @@ def get_qwen(model_name, hf_token, args):
         args.rotary_emb = model.model.rotary_emb
         logging.info('---> Using model-level rotary_emb for quantization')
 
+    # Wrap each layer with QuantDecoderLayer, keeping it on the same device as the original
+    layer_devices = {}
     for i in range(len(layers)):
-        layers[i] = QuantDecoderLayer(model.config,layers[i],args)
-    model.model.embed_tokens = QuantEmbedding(model.model.embed_tokens,args.embed_quant_params) # TODO add embed_tokens's quantizaton-config
-    model.model.norm = QuantRMSNorm(model.model.norm,dict(bits=32))
-    model.lm_head = QuantLinear(model.lm_head,dict(bits=32))
+        # Get the device of the original layer
+        original_device = next(layers[i].parameters()).device
+        # Create QuantDecoderLayer and move it to the same device
+        new_layer = QuantDecoderLayer(model.config, layers[i], args)
+        layers[i] = new_layer.to(original_device)
+        # Track device distribution
+        dev_str = str(original_device)
+        layer_devices[dev_str] = layer_devices.get(dev_str, 0) + 1
+
+    logging.info(f'---> Wrapped {len(layers)} layers, device distribution: {layer_devices}')
+
+    # Wrap embed_tokens, norm, lm_head - keep on their original devices
+    embed_device = model.model.embed_tokens.weight.device
+    model.model.embed_tokens = QuantEmbedding(model.model.embed_tokens, args.embed_quant_params).to(embed_device)
+
+    norm_device = model.model.norm.weight.device
+    model.model.norm = QuantRMSNorm(model.model.norm, dict(bits=32)).to(norm_device)
+
+    lm_head_device = model.lm_head.weight.device
+    model.lm_head = QuantLinear(model.lm_head, dict(bits=32)).to(lm_head_device)
+
     return model
 
 

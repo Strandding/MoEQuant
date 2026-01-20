@@ -11,7 +11,8 @@ import gptq_utils_moe
 # import gptq_utils_hessian_group
 import eval_utils
 import hadamard_utils
-import bit_mask 
+import bit_mask
+import logging 
 from quant_layers.quant_layer import QuantDecoderLayer,QuantRMSNorm,QuantLinear,QuantEmbedding,Quantizer
 from evaluation.evaluate_mmlu import eval_mmlu
 from evaluation.evaluate_humaneval import eval_humaneval
@@ -28,6 +29,12 @@ def build_prompt(text):
     return text 
 
 def eval_ppl_c4(model,tokenizer,seqlen=2048,limit=-1):
+    # Detect model device for multi-GPU compatibility
+    if hasattr(model, 'model') and hasattr(model.model, 'embed_tokens'):
+        model_device = model.model.embed_tokens.weight.device
+    else:
+        model_device = next(model.parameters()).device
+
     c4_testdata = load_dataset(
         'allenai/c4', data_files={'validation': 'en/c4-validation.00000-of-00008.json.gz'}, split='validation'
     )
@@ -99,10 +106,25 @@ def eval_ppl_(model, test_loader, seqlen=2048, limit=-1, data_name='wiki'):
     兼容 input_ids 为 Tensor 或 Dict 的情况。
     """
     # ------------------------------------------------------------------
+    # 0. 检测模型所在设备 (支持多GPU分布式模型)
+    # ------------------------------------------------------------------
+    # 获取模型第一个参数所在的设备
+    # 对于使用 device_map='auto' 的模型，不同层可能在不同设备上
+    # 我们需要将输入发送到模型入口层所在的设备
+    if hasattr(model, 'model') and hasattr(model.model, 'embed_tokens'):
+        # 获取embedding层的设备
+        model_device = model.model.embed_tokens.weight.device
+    else:
+        # 回退方案：获取第一个参数的设备
+        model_device = next(model.parameters()).device
+
+    print(f"Model device detected: {model_device}")
+
+    # ------------------------------------------------------------------
     # 1. 更加稳健的数据提取逻辑 (仿照你之前的逻辑但更强壮)
     # ------------------------------------------------------------------
     input_ids = test_loader
-    
+
     # 如果是 WikiText2 (通常是 BatchEncoding/Dict)，提取 input_ids
     if isinstance(test_loader, dict):
         if 'input_ids' in test_loader:
@@ -115,21 +137,21 @@ def eval_ppl_(model, test_loader, seqlen=2048, limit=-1, data_name='wiki'):
     # 此时 input_ids 应该是一个 Tensor，确保其形状为 [1, seq_len] 并移动到 GPU
     if not isinstance(input_ids, torch.Tensor):
         input_ids = torch.tensor(input_ids)
-    
+
     if input_ids.ndim == 1:
         input_ids = input_ids.unsqueeze(0) # 确保是 [1, seq_len]
-        
+
     # 放到 CUDA (你源代码这里是在循环里放的，滑窗为了效率建议直接放，或者分块放)
-    # 考虑到显存，我们在循环里切片后再 to('cuda')，这里先保持在 CPU 也可以
+    # 考虑到显存，我们在循环里切片后再 to(model_device)，这里先保持在 CPU 也可以
     # 但为了 input_ids.size(1) 获取方便，先不动的引用
-    
+
     # ------------------------------------------------------------------
     # 2. 滑动窗口设置
     # ------------------------------------------------------------------
     max_length = seqlen
     stride = 512  # 标准滑动窗口步长
     total_len = input_ids.size(1)
-    
+
     nlls = []
     print(f"Evaluating PPL with Sliding Window (stride={stride}, total_len={total_len})...")
 
@@ -148,7 +170,7 @@ def eval_ppl_(model, test_loader, seqlen=2048, limit=-1, data_name='wiki'):
             break
 
         # 取出当前窗口的 input_ids
-        input_batch = input_ids[:, begin_loc:end_loc].to('cuda') # 在这里移动到 GPU
+        input_batch = input_ids[:, begin_loc:end_loc].to(model_device) # 使用检测到的模型设备
         
         # 构造标签 (Labels)
         # 逻辑：input_batch 包含了 [Context + Target]
@@ -346,7 +368,7 @@ def main():
                         cnt = cnt +1
                         if cnt==args.nsamples:
                             break
-                trainloader = torch.utils.data.DataLoader(dataset, batch_size=1,shuffle=True) 
+                trainloader = torch.utils.data.DataLoader(dataset, batch_size=1,shuffle=True)
             else:
                 if 'deepseek' in args.model or 'mixtral' in args.model.lower() or 'qwen' in args.model.lower():
                     trainloader = data_utils.get_loaders(
