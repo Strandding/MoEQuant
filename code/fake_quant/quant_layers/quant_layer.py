@@ -328,6 +328,13 @@ class QuantDecoderLayer(nn.Module):
                 "Passing `padding_mask` is deprecated and will be removed in v4.37. "
                 "Please make sure use `attention_mask` instead.`"
             )
+        layer_device = self.input_layernorm.weight.device
+        if hidden_states.device != layer_device:
+            hidden_states = hidden_states.to(layer_device)
+        if attention_mask is not None and attention_mask.device != layer_device:
+            attention_mask = attention_mask.to(layer_device)
+        if position_ids is not None and position_ids.device != layer_device:
+            position_ids = position_ids.to(layer_device)
         """
         Args:
             hidden_states (`torch.FloatTensor`): input to the layer of shape `(batch, seq_len, embed_dim)`

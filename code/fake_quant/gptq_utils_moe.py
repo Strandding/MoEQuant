@@ -184,17 +184,34 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
     '''
     logging.info('-----GPTQ Quantization-----')
     
+    def _get_module_device(module, default_device):
+        for param in module.parameters():
+            return param.device
+        for buf in module.buffers():
+            return buf.device
+        return default_device
+
     use_cache = model.config.use_cache
     model.config.use_cache = False
     layers = model.model.layers
 
-    model.model.embed_tokens = model.model.embed_tokens.to(dev)
-    model.model.norm = model.model.norm.to(dev)
-    layers[0] = layers[0].to(dev)
+    hf_device_map = getattr(model, "hf_device_map", None)
+    multi_device = isinstance(hf_device_map, dict) and len(set(hf_device_map.values())) > 1
+    first_layer_device = _get_module_device(layers[0], dev)
+    embed_device = first_layer_device
+    if hasattr(model.model, "embed_tokens"):
+        embed_device = _get_module_device(model.model.embed_tokens, first_layer_device)
+    dev = embed_device
+    if not multi_device:
+        if hasattr(model.model, "embed_tokens"):
+            model.model.embed_tokens = model.model.embed_tokens.to(dev)
+        if hasattr(model.model, "norm"):
+            model.model.norm = model.model.norm.to(dev)
+        layers[0] = layers[0].to(dev)
     dtype = model.lm_head.weight.dtype
     # dtype = next(iter(model.parameters())).dtype
     inps = torch.zeros(
-        (args.nsamples, model.seqlen, model.config.hidden_size), dtype=dtype, device=dev
+        (args.nsamples, model.seqlen, model.config.hidden_size), dtype=dtype, device=first_layer_device
         # (args.nsamples, 512, model.config.hidden_size), dtype=dtype, device=dev
     )
     cache = {'i': 0, 'attention_mask': None}
@@ -216,14 +233,14 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
                 texts = batch["text"]
                 queries = [build_prompt(query) for query in texts]
                 tokenizer.pad_token = tokenizer.eos_token# for mixtral
-                inputs = tokenizer(queries, return_tensors="pt", truncation=True, max_length=model.seqlen,padding=True).to(dev)
+                inputs = tokenizer(queries, return_tensors="pt", truncation=True, max_length=model.seqlen,padding=True).to(embed_device)
                 inputs['input_ids'] =  F.pad(inputs['input_ids'],(0,model.seqlen-inputs['input_ids'].shape[1]))
                 # inputs = tokenizer(queries, return_tensors="pt", truncation=True, max_length=512,padding=True).to(dev)
                 # inputs['input_ids'] =  F.pad(inputs['input_ids'],(0,512-inputs['input_ids'].shape[1]))
-                model(inputs['input_ids'])
+                model(inputs['input_ids'], attention_mask=inputs.get('attention_mask'))
             else:
                 # model(batch.to(dev))
-                model(batch[0].to(dev))
+                model(batch[0].to(embed_device))
         except ValueError:
             pass
     layers[0] = layers[0].module
@@ -233,7 +250,6 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
     # model.model.norm = model.model.norm.cpu()
     torch.cuda.empty_cache()
 
-    outs = torch.zeros_like(inps)
     attention_mask = cache['attention_mask']
     position_ids = cache['position_ids']
 
@@ -247,6 +263,16 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
     for i in range(len(layers)):
         print(f'\nLayer {i}:', flush=True, end=' ')
         layer = layers[i]#.to(dev)
+        layer_device = _get_module_device(layer, inps.device)
+        if inps.device != layer_device:
+            inps = inps.to(layer_device)
+        attention_mask_dev = attention_mask
+        if attention_mask_dev is not None and attention_mask_dev.device != layer_device:
+            attention_mask_dev = attention_mask_dev.to(layer_device)
+        position_ids_dev = position_ids
+        if position_ids_dev is not None and position_ids_dev.device != layer_device:
+            position_ids_dev = position_ids_dev.to(layer_device)
+        outs = torch.zeros_like(inps, device=layer_device)
         full = quant_utils.find_qlayers(layer, layers=[torch.nn.Linear])
         if 'deepseek' in args.model.lower() and i>=1:
             full['mlp.gate'] = model.model.layers[i].mlp.gate
@@ -304,7 +330,12 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
             gate_handles.append(layer.block_sparse_moe.gate.register_forward_hook(save_gate_res_mixtral))
         if gate_handles:
             for j in range(args.nsamples):
-                outs[j] = layer(inps[j].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids,cur_sample=j)[0]
+                outs[j] = layer(
+                    inps[j].unsqueeze(0),
+                    attention_mask=attention_mask_dev,
+                    position_ids=position_ids_dev,
+                    cur_sample=j,
+                )[0]
             routing_scores = torch.tensor(routing_scores)
             selected_experts = torch.tensor(selected_experts)
             for h in gate_handles:
@@ -416,7 +447,12 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
             # all sample 
             # layer.mlp.static_observer=True
             for jjj in range(args.nsamples):
-                outs[jjj] = layer(inps[jjj].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids,cur_sample=jjj)[0]
+                outs[jjj] = layer(
+                    inps[jjj].unsqueeze(0),
+                    attention_mask=attention_mask_dev,
+                    position_ids=position_ids_dev,
+                    cur_sample=jjj,
+                )[0]
             for h in handles:
                 h.remove()
             for name in subset:
@@ -451,7 +487,11 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
                     elif 'mixtral' in args.model.lower():
                         handles.append(layer.block_sparse_moe.gate.register_forward_hook(save_gate_res_mixtral))
                     for j in range(args.nsamples):
-                        outs[j] = layer(inps[j].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids)[0]
+                        outs[j] = layer(
+                            inps[j].unsqueeze(0),
+                            attention_mask=attention_mask_dev,
+                            position_ids=position_ids_dev,
+                        )[0]
                     routing_scores = torch.tensor(routing_scores)
                     selected_experts = torch.tensor(selected_experts)
                     for h in handles:
@@ -464,14 +504,22 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
                     handles = []
                     handles.append(layer.mlp.shared_expert_gate.register_forward_hook(save_sharedgate_res))
                     for j in range(args.nsamples):
-                        outs[j] = layer(inps[j].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids)[0]
+                        outs[j] = layer(
+                            inps[j].unsqueeze(0),
+                            attention_mask=attention_mask_dev,
+                            position_ids=position_ids_dev,
+                        )[0]
                     routing_scores_shared = torch.tensor(routing_scores_shared)
                     for h in handles:
                         h.remove()
         # layer.mlp.static_observer=False
         
         for j in range(args.nsamples):
-            outs[j] = layer(inps[j].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids)[0]
+            outs[j] = layer(
+                inps[j].unsqueeze(0),
+                attention_mask=attention_mask_dev,
+                position_ids=position_ids_dev,
+            )[0]
 
         # layers[i] = layer.cpu()
         layers[i] = layer
