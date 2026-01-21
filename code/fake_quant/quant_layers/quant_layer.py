@@ -13,7 +13,6 @@ from transformers.models.llama.configuration_llama import LlamaConfig
 from transformers.activations import ACT2FN
 from .quant_ops import *
 
-
 def build_rotary_matrix(cos, sin):
     bsz, seq_len, head_dim = cos.size()
     cos2d = cos.reshape(-1, head_dim)
@@ -57,6 +56,8 @@ class QuantMLP(nn.Module):
             act_rst = self.silu(gate_proj_rst)
             mul_rst = self.mul(up_proj_rst, act_rst)
             down_proj_rst = self.down_proj(mul_rst)
+        if torch.isnan(x).any():
+            breakpoint()
         return down_proj_rst
 
 class QuantMoeBlock(nn.Module):
@@ -74,16 +75,21 @@ class QuantMoeBlock(nn.Module):
             [QuantMLP(org_module.experts[i_expert], config=config, args=args) for i_expert in range(self.num_experts)]
         )
 
-        self.shared_expert = QuantMLP(org_module.shared_expert,config=config, args=args)
-        #Qwen2MoeMLP(config, intermediate_size=config.shared_expert_intermediate_size)
-        self.shared_expert_gate = QuantLinear(org_module.shared_expert_gate, args.weight_quant_params, args.shared_gate_quant_params )  
-        #torch.nn.Linear(config.hidden_size, 1, bias=False)
+        # Qwen1.5/Qwen2 have shared experts, Qwen3 may not.
+        if hasattr(org_module, 'shared_expert'):
+            self.shared_expert = QuantMLP(org_module.shared_expert, config=config, args=args)
+        else:
+            self.shared_expert = None
+        if hasattr(org_module, 'shared_expert_gate'):
+            self.shared_expert_gate = QuantLinear(org_module.shared_expert_gate, args.weight_quant_params, args.shared_gate_quant_params)
+        else:
+            self.shared_expert_gate = None
         self.static_observer = False
         if False:
-            self.top1_cnt = [0] * 60
-            self.top2_cnt = [0] * 60
-            self.top3_cnt = [0] * 60
-            self.top4_cnt = [0] * 60
+            self.top1_cnt = [0] * self.num_experts
+            self.top2_cnt = [0] * self.num_experts
+            self.top3_cnt = [0] * self.num_experts
+            self.top4_cnt = [0] * self.num_experts
         # self.gate_res = []
         # self.use_float_expert = False
     def forward(self, hidden_states: torch.Tensor,cur_sample: int=0) -> torch.Tensor:
@@ -96,7 +102,7 @@ class QuantMoeBlock(nn.Module):
         routing_weights = F.softmax(router_logits, dim=1, dtype=torch.float)
         
         if self.static_observer==True:
-            routing_weights, selected_experts = torch.topk(routing_weights, 60, dim=-1)
+            routing_weights, selected_experts = torch.topk(routing_weights, self.num_experts, dim=-1)
         else:
             routing_weights, selected_experts = torch.topk(routing_weights, self.top_k, dim=-1)
         if False:
@@ -131,6 +137,8 @@ class QuantMoeBlock(nn.Module):
             current_state = hidden_states[None, top_x].reshape(-1, hidden_dim)
             # normal experts prediction
             # for act quant 
+            if torch.isnan(current_state).any():
+                breakpoint()
             current_hidden_states = expert_layer(current_state) * routing_weights[top_x, idx, None]
             # score_med = routing_weights[top_x, idx, None].median()
             # device = expert_layer.up_proj.weight.device
@@ -158,13 +166,14 @@ class QuantMoeBlock(nn.Module):
         # shared_expert_output[shared_w8_thres_idx[0]] = self.shared_expert(hidden_states[shared_w8_thres_idx[0]],w8=True)
         # shared_expert_output[shared_w4_thres_idx[0]] = self.shared_expert(hidden_states[shared_w4_thres_idx[0]])
         # shared_expert_output = shared_score * shared_expert_output
-        self.shared_expert.gate_proj.cur_sample = cur_sample
-        self.shared_expert.up_proj.cur_sample = cur_sample
-        self.shared_expert.down_proj.cur_sample = cur_sample
-        shared_expert_output = self.shared_expert(hidden_states)
-        shared_expert_output = F.sigmoid(self.shared_expert_gate(hidden_states)) * shared_expert_output
-
-        final_hidden_states = final_hidden_states + shared_expert_output
+        if self.shared_expert is not None:
+            self.shared_expert.gate_proj.cur_sample = cur_sample
+            self.shared_expert.up_proj.cur_sample = cur_sample
+            self.shared_expert.down_proj.cur_sample = cur_sample
+            shared_expert_output = self.shared_expert(hidden_states)
+            if self.shared_expert_gate is not None:
+                shared_expert_output = F.sigmoid(self.shared_expert_gate(hidden_states)) * shared_expert_output
+            final_hidden_states = final_hidden_states + shared_expert_output
 
         final_hidden_states = final_hidden_states.reshape(batch_size, sequence_length, hidden_dim)
         # if self.use_float_expert:
@@ -172,13 +181,17 @@ class QuantMoeBlock(nn.Module):
         return final_hidden_states, router_logits
 
 class QuantAttention(nn.Module):
-    def __init__(self, org_module: LlamaAttention, config: LlamaConfig, args):
+    def __init__(self, org_module: LlamaAttention, config: LlamaConfig, args, is_qwen3_style: bool = False):
         super().__init__()
 
+        self._is_qwen3_style = is_qwen3_style
         self.layer_idx = org_module.layer_idx
         self.hidden_size = config.hidden_size
         self.num_heads = config.num_attention_heads
-        self.head_dim = self.hidden_size // self.num_heads
+        if hasattr(config, 'head_dim') and config.head_dim is not None:
+            self.head_dim = config.head_dim
+        else:
+            self.head_dim = self.hidden_size // self.num_heads
         self.num_key_value_heads = config.num_key_value_heads
         self.num_key_value_groups = self.num_heads // self.num_key_value_heads
         self.max_position_embeddings = config.max_position_embeddings
@@ -211,14 +224,26 @@ class QuantAttention(nn.Module):
 
         self.softmax = QuantSoftmax(args.softmax_quant_params, -1)
 
-        self.rotary_emb = org_module.rotary_emb
-        try:
-            rotary_params = inspect.signature(self.rotary_emb.forward).parameters
-            self._rotary_has_position_ids = "position_ids" in rotary_params
-            self._rotary_has_seq_len = "seq_len" in rotary_params
-        except (TypeError, ValueError):
-            self._rotary_has_position_ids = False
-            self._rotary_has_seq_len = False
+        if hasattr(org_module, 'rotary_emb'):
+            self.rotary_emb = org_module.rotary_emb
+        else:
+            if hasattr(args, 'rotary_emb'):
+                self.rotary_emb = args.rotary_emb
+            else:
+                try:
+                    from transformers.models.qwen2_moe.modeling_qwen2_moe import Qwen2MoeRotaryEmbedding
+                    self.rotary_emb = Qwen2MoeRotaryEmbedding(
+                        self.head_dim,
+                        max_position_embeddings=self.max_position_embeddings,
+                        base=self.rope_theta,
+                    )
+                except ImportError:
+                    from transformers.models.llama.modeling_llama import LlamaRotaryEmbedding
+                    self.rotary_emb = LlamaRotaryEmbedding(
+                        self.head_dim,
+                        max_position_embeddings=self.max_position_embeddings,
+                        base=self.rope_theta,
+                    )
 
     def forward(
         self,
@@ -228,7 +253,11 @@ class QuantAttention(nn.Module):
         past_key_value: Optional[Cache] = None,
         output_attentions: bool = False,
         use_cache: bool = False,
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        **kwargs,
     ):  
+        if torch.isnan(hidden_states).any():
+            breakpoint()
         bsz, q_len, _ = hidden_states.size()
 
         query_states = self.q_proj(hidden_states)
@@ -246,20 +275,31 @@ class QuantAttention(nn.Module):
         ).transpose(
             1, 2
         )  # b h l d
-        kv_seq_len = value_states.shape[-2]
-        # past_key_value = getattr(self, "past_key_value", past_key_value)
+        kv_seq_len = q_len
         if past_key_value is not None:
-            kv_seq_len += past_key_value.get_usable_length(kv_seq_len,self.layer_idx)
-        if self._rotary_has_position_ids:
-            cos, sin = self.rotary_emb(value_states, position_ids)
+            kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
+
+        if self._is_qwen3_style and position_embeddings is not None:
+            cos, sin = position_embeddings
+            cos = cos.to(query_states.device)
+            sin = sin.to(query_states.device)
         else:
-            if self._rotary_has_seq_len:
-                cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+            try:
+                rotary_device = next(self.rotary_emb.parameters()).device
+            except StopIteration:
+                rotary_device = value_states.device
+
+            if value_states.device != rotary_device:
+                if position_ids is None:
+                    cos, sin = self.rotary_emb(value_states.to(rotary_device))
+                else:
+                    cos, sin = self.rotary_emb(value_states.to(rotary_device), position_ids.to(rotary_device))
+                cos, sin = cos.to(query_states.device), sin.to(query_states.device)
             else:
-                cos, sin = self.rotary_emb(value_states)
-            if position_ids is not None and cos.dim() == 2:
-                cos = cos[position_ids.to(cos.device)]
-                sin = sin[position_ids.to(sin.device)]
+                if position_ids is None:
+                    cos, sin = self.rotary_emb(value_states)
+                else:
+                    cos, sin = self.rotary_emb(value_states, position_ids)
         rotary_matrix = build_rotary_matrix(cos, sin).to(query_states.device)
 
         key_states = self.ropek(key_states, rotary_matrix).transpose(
@@ -275,16 +315,20 @@ class QuantAttention(nn.Module):
 
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
-
+        if torch.isnan(query_states).any():
+            breakpoint()
         attn_weights = self.qk_matmul(query_states, key_states.transpose(2, 3)) / (
             math.sqrt(self.head_dim)
         )  # b h l d @ b h d l -> b h l l
         if attention_mask is not None and attention_mask.dim() == 4:
             attention_mask = attention_mask[:, :, :q_len, : key_states.shape[-2]]
-
-        attn_weights = self.softmax(attn_weights,attention_mask).to(key_states.dtype)  # b h l l
+        if torch.isnan(attn_weights).any():
+            breakpoint()
+        attn_weights_new = self.softmax(attn_weights,attention_mask).to(key_states.dtype)  # b h l l
+        if torch.isnan(attn_weights_new).any():
+            breakpoint()
         attn_output = self.pv_matmul(
-            attn_weights,value_states
+            attn_weights_new,value_states
         )  # b h l l @ b h l d -> b h l d
         attn_output = self.o_proj(attn_output)
         if not output_attentions:
@@ -295,7 +339,15 @@ class QuantDecoderLayer(nn.Module):
     def __init__(self, config: LlamaConfig, ori_layer: LlamaDecoderLayer, args):
         super().__init__()
         self.hidden_size = config.hidden_size
-        self.self_attn = QuantAttention(ori_layer.self_attn, config=config, args=args)
+        ori_layer_name = ori_layer.__class__.__name__
+        self._is_qwen3_style = 'Qwen3Moe' in ori_layer_name or 'Qwen3Next' in ori_layer_name
+        self._return_single_tensor = self._is_qwen3_style
+        self.self_attn = QuantAttention(
+            ori_layer.self_attn,
+            config=config,
+            args=args,
+            is_qwen3_style=self._is_qwen3_style,
+        )
         self.mlp = QuantMoeBlock(ori_layer.mlp, config=config, args=args)
         self.input_layernorm = QuantRMSNorm(
             ori_layer.input_layernorm, args.norm_quant_params
@@ -319,10 +371,16 @@ class QuantDecoderLayer(nn.Module):
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cur_sample: int = 0,
+        position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         **kwargs,
     ) -> Tuple[
         torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]
-    ]:
+    ]:  
+        # print(f"yes_decoder ")
+        if isinstance(hidden_states, tuple):
+            hidden_states = hidden_states[0]
+        if (hidden_states.max() < 1e-6).item():
+            breakpoint()
         if "padding_mask" in kwargs:
             warnings.warn(
                 "Passing `padding_mask` is deprecated and will be removed in v4.37. "
@@ -352,7 +410,10 @@ class QuantDecoderLayer(nn.Module):
         residual = hidden_states
 
         hidden_states = self.input_layernorm(hidden_states)
-
+        if torch.isnan(hidden_states).any():
+            breakpoint()
+        if (hidden_states.max() < 1e-6).item():
+            breakpoint()
         # Self Attention
         hidden_states, self_attn_weights, present_key_value = self.self_attn(
             hidden_states=hidden_states,
@@ -361,13 +422,31 @@ class QuantDecoderLayer(nn.Module):
             past_key_value=past_key_value,
             output_attentions=output_attentions,
             use_cache=use_cache,
+            position_embeddings=position_embeddings,
         )
+        if (hidden_states.max() < 1e-6).item():
+            breakpoint()
+        if torch.isnan(hidden_states).any():
+            breakpoint()
         hidden_states = self.resadd1(residual, hidden_states)
+        if torch.isnan(hidden_states).any():
+            breakpoint()
+        if (hidden_states.max() < 1e-6).item():
+            breakpoint()
         # Fully Connected
         residual = hidden_states
         hidden_states = self.post_attention_layernorm(hidden_states)
+        if (hidden_states.max() < 1e-6).item():
+            breakpoint()
         hidden_states = self.mlp(hidden_states,cur_sample)[0]
+        if (hidden_states.max() < 1e-6).item():
+            breakpoint()
+        if torch.isnan(hidden_states).any():
+            breakpoint()
         hidden_states = self.resadd2(residual, hidden_states)
+
+        if self._return_single_tensor:
+            return hidden_states
 
         outputs = (hidden_states,)
         if output_attentions:
@@ -454,13 +533,13 @@ class QuantDecoderLayer(nn.Module):
         self.self_attn.o_proj.use_weight_quant = False
 
         # [MoE Router/Gate 部分]：强制关闭 (不量化路由权重)
-        if hasattr(self.mlp, 'shared_expert_gate'):
+        if hasattr(self.mlp, 'shared_expert_gate') and self.mlp.shared_expert_gate is not None:
             self.mlp.shared_expert_gate.use_weight_quant = False
         self.mlp.gate.use_weight_quant = False 
 
         # [MoE Experts 部分]：启用量化 (仅 up, down, gate projections)
         # 1. Shared Expert (共享专家)
-        if hasattr(self.mlp, 'shared_expert'):
+        if hasattr(self.mlp, 'shared_expert') and self.mlp.shared_expert is not None:
             self.mlp.shared_expert.gate_proj.use_weight_quant = False
             self.mlp.shared_expert.up_proj.use_weight_quant = False
             self.mlp.shared_expert.down_proj.use_weight_quant = False
@@ -469,9 +548,9 @@ class QuantDecoderLayer(nn.Module):
         # 使用 len(self.mlp.experts) 动态获取专家数量，替代原代码中的 range(60)
         for i in range(len(self.mlp.experts)):
             # if i in [0]:
-            self.mlp.experts[i].gate_proj.use_weight_quant = False
+            self.mlp.experts[i].gate_proj.use_weight_quant = use_weight_quant
             self.mlp.experts[i].up_proj.use_weight_quant = use_weight_quant
-            self.mlp.experts[i].down_proj.use_weight_quant = False
+            self.mlp.experts[i].down_proj.use_weight_quant = use_weight_quant
 
         # -------------------------------------------
         # B. 激活量化设置 (Activation Quantization)
@@ -494,13 +573,13 @@ class QuantDecoderLayer(nn.Module):
         self.self_attn.o_proj.use_act_quant = False
 
         # MoE 内部激活
-        if hasattr(self.mlp, 'shared_expert'):
+        if hasattr(self.mlp, 'shared_expert') and self.mlp.shared_expert is not None:
              self.mlp.shared_expert.mul.use_act_quant = False
              self.mlp.shared_expert.gate_proj.use_act_quant = False
              self.mlp.shared_expert.up_proj.use_act_quant = False
              self.mlp.shared_expert.down_proj.use_act_quant = False
         
-        if hasattr(self.mlp, 'shared_expert_gate'):
+        if hasattr(self.mlp, 'shared_expert_gate') and self.mlp.shared_expert_gate is not None:
              self.mlp.shared_expert_gate.use_act_quant = False
 
         self.mlp.gate.use_act_quant = False

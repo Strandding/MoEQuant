@@ -1,0 +1,33 @@
+==================== 任务启动信息 ====================
+启动时间: 2026-01-21 22:24:38
+当前目录: /export/home2/zihan/MoEQuant/code
+模型名称: Qwen1.5-MoE-A2.7B
+权重位数 (W_BITS): 2
+样本数量 (N_SAMPLES): 4
+显卡设置: CUDA_VISIBLE_DEVICES=4,5
+保存路径: /dataset/common/quant_model/moequant_qwen15_w2_selfebss_nsample_4_groupsize128.pth
+校准数据: ./EBSS_data/ebss_qwen15_selfbuild_merged.jsonl
+完整执行命令:
+python fake_quant/main.py --model /dataset/common/pretrain_model/Qwen1.5-MoE-A2.7B --w_bits 2 --nsamples 4 --save_qmodel_path /dataset/common/quant_model/moequant_qwen15_w2_selfebss_nsample_4_groupsize128.pth --EBSS_calib --AGQ_GPTQ
+======================================================
+
+
+
+Traceback (most recent call last):
+  File "/export/home2/zihan/MoEQuant/code/fake_quant/main.py", line 4, in <module>
+    import model_utils
+  File "/export/home2/zihan/MoEQuant/code/fake_quant/model_utils.py", line 8, in <module>
+    from quant_layers.quant_layer import QuantDecoderLayer,QuantRMSNorm,QuantLinear,QuantEmbedding,Quantizer
+  File "/export/home2/zihan/MoEQuant/code/fake_quant/quant_layers/quant_layer.py", line 3, in <module>
+    from transformers.models.llama.modeling_llama import (
+  File "/export/home2/zihan/miniconda3/envs/moe/lib/python3.11/site-packages/transformers/models/__init__.py", line 396, in <module>
+    sys.modules[__name__] = _LazyModule(__name__, _file, define_import_structure(_file), module_spec=__spec__)
+                                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/export/home2/zihan/miniconda3/envs/moe/lib/python3.11/site-packages/transformers/utils/import_utils.py", line 2867, in define_import_structure
+    import_structure = create_import_structure_from_path(module_path)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/export/home2/zihan/miniconda3/envs/moe/lib/python3.11/site-packages/transformers/utils/import_utils.py", line 2579, in create_import_structure_from_path
+    if f != "__pycache__" and os.path.isdir(os.path.join(module_path, f)):
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen genericpath>", line 42, in isdir
+KeyboardInterrupt

@@ -65,9 +65,9 @@ def rotate_attention_output(layer, Q, model_type) -> None:
         W = layer.self_attn.o_proj
     elif model_type == model_utils.OPT_MODEL:
         W = layer.self_attn.out_proj
-    elif model_type == model_utils.QWEN_MODEL:
+    elif model_utils._is_qwen_moe_type(model_type):
         W = layer.self_attn.o_proj
-    elif model_type == model_utils.DEEPSEEK_MODEL:
+    elif model_utils._is_deepseek_type(model_type):
         W = layer.self_attn.o_proj
     elif model_type == model_utils.MIXTRAL_MODEL:
         W = layer.self_attn.o_proj
@@ -91,24 +91,33 @@ def rotate_mlp_input(layer, Q, model_type):
         mlp_inputs = [layer.mlp.up_proj, layer.mlp.gate_proj]
     elif model_type == model_utils.OPT_MODEL:
         mlp_inputs = [layer.fc1]
-    elif model_type == model_utils.QWEN_MODEL:
-        mlp_inputs = [layer.mlp.shared_expert_gate, layer.mlp.shared_expert.gate_proj, layer.mlp.shared_expert.up_proj, layer.mlp.gate]
-        for i in range(60):
+    elif model_utils._is_qwen_moe_type(model_type):
+        mlp_inputs = [layer.mlp.gate]
+        if hasattr(layer.mlp, 'shared_expert_gate') and layer.mlp.shared_expert_gate is not None:
+            mlp_inputs.append(layer.mlp.shared_expert_gate)
+        if hasattr(layer.mlp, 'shared_expert') and layer.mlp.shared_expert is not None:
+            mlp_inputs.extend([layer.mlp.shared_expert.gate_proj, layer.mlp.shared_expert.up_proj])
+        num_experts = len(layer.mlp.experts)
+        for i in range(num_experts):
             mlp_inputs.append(layer.mlp.experts[i].up_proj)
             mlp_inputs.append(layer.mlp.experts[i].gate_proj)
-    elif model_type == model_utils.DEEPSEEK_MODEL:
-        if isinstance(layer.mlp, DeepseekMLP):
+    elif model_utils._is_deepseek_type(model_type):
+        mlp_class_name = layer.mlp.__class__.__name__
+        if 'MoE' in mlp_class_name:
+            mlp_inputs = [layer.mlp.gate]
+            if hasattr(layer.mlp, 'shared_experts') and layer.mlp.shared_experts is not None:
+                mlp_inputs.extend([layer.mlp.shared_experts.gate_proj, layer.mlp.shared_experts.up_proj])
+            if hasattr(layer.mlp, 'experts'):
+                for expert in layer.mlp.experts:
+                    mlp_inputs.append(expert.up_proj)
+                    mlp_inputs.append(expert.gate_proj)
+        else:
             mlp_inputs = [layer.mlp.up_proj, layer.mlp.gate_proj]
-        elif isinstance(layer.mlp, DeepseekMoE):
-            mlp_inputs = [layer.mlp.shared_experts.gate_proj, layer.mlp.shared_experts.up_proj, layer.mlp.gate]
-            for i in range(64):
-                mlp_inputs.append(layer.mlp.experts[i].up_proj)
-                mlp_inputs.append(layer.mlp.experts[i].gate_proj)
     elif model_type == model_utils.MIXTRAL_MODEL:
         mlp_inputs = [layer.block_sparse_moe.gate]
-        for i in range(8):
-            mlp_inputs.append(layer.block_sparse_moe.experts[i].w1)
-            mlp_inputs.append(layer.block_sparse_moe.experts[i].w3)
+        for expert in layer.block_sparse_moe.experts:
+            mlp_inputs.append(expert.w1)
+            mlp_inputs.append(expert.w3)
     else:
         raise ValueError(f'Unknown model type {model_type}')
     for W in mlp_inputs:
@@ -124,21 +133,28 @@ def rotate_mlp_output(layer, Q, model_type):
         W = layer.mlp.down_proj
     elif model_type == model_utils.OPT_MODEL:
         W = layer.fc2
-    elif model_type == model_utils.QWEN_MODEL:
-        mlp_outputs = [layer.mlp.shared_expert.down_proj]
-        for i in range(60):
+    elif model_utils._is_qwen_moe_type(model_type):
+        mlp_outputs = []
+        if hasattr(layer.mlp, 'shared_expert') and layer.mlp.shared_expert is not None and hasattr(layer.mlp.shared_expert, 'down_proj'):
+            mlp_outputs.append(layer.mlp.shared_expert.down_proj)
+        num_experts = len(layer.mlp.experts)
+        for i in range(num_experts):
             mlp_outputs.append(layer.mlp.experts[i].down_proj)
-    elif model_type ==model_utils.DEEPSEEK_MODEL:
-        if isinstance(layer.mlp, DeepseekMLP):
+    elif model_utils._is_deepseek_type(model_type):
+        mlp_class_name = layer.mlp.__class__.__name__
+        if 'MoE' in mlp_class_name:
+            mlp_outputs = []
+            if hasattr(layer.mlp, 'shared_experts') and layer.mlp.shared_experts is not None and hasattr(layer.mlp.shared_experts, 'down_proj'):
+                mlp_outputs.append(layer.mlp.shared_experts.down_proj)
+            if hasattr(layer.mlp, 'experts'):
+                for expert in layer.mlp.experts:
+                    mlp_outputs.append(expert.down_proj)
+        else:
             mlp_outputs = [layer.mlp.down_proj]
-        elif isinstance(layer.mlp, DeepseekMoE):
-            mlp_outputs = [layer.mlp.shared_experts.down_proj]
-            for i in range(64):
-                mlp_outputs.append(layer.mlp.experts[i].down_proj)
     elif model_type == model_utils.MIXTRAL_MODEL:
         mlp_outputs = []
-        for i in range(8):
-            mlp_outputs.append(layer.block_sparse_moe.experts[i].w2)
+        for expert in layer.block_sparse_moe.experts:
+            mlp_outputs.append(expert.w2)
     else:
         raise ValueError(f'Unknown model type {model_type}')
     for W in mlp_outputs:
@@ -200,9 +216,9 @@ def rotate_ov_proj(layer, model_type, head_num, head_dim):
         o_proj = layer.self_attn.o_proj
     elif model_type == model_utils.OPT_MODEL:
         o_proj = layer.self_attn.out_proj
-    elif model_type == model_utils.QWEN_MODEL:
+    elif model_utils._is_qwen_moe_type(model_type):
         o_proj = layer.self_attn.o_proj
-    elif model_type == model_utils.DEEPSEEK_MODEL:
+    elif model_utils._is_deepseek_type(model_type):
         o_proj = layer.self_attn.o_proj
     elif model_type == model_utils.MIXTRAL_MODEL:
         o_proj = layer.self_attn.o_proj
@@ -306,3 +322,88 @@ def add_qk_rotation_wrapper_after_function_call_in_forward(module, function_name
     wrapper = monkeypatch.add_wrapper_after_function_call_in_method(module, "forward",
                                                                     function_name, functools.partial(QKRotationWrapper, *args, **kwargs))
     setattr(module, attr_name, wrapper)
+
+def fuse_layer_norms(model):
+    print("正在使用fuse_layer_norms")
+    model_type = model_utils.model_type_extractor(model)
+
+    norm = model_utils.get_pre_head_layernorm(model, model_type)
+    lm_head = model_utils.get_lm_head(model, model_type)
+
+    if hasattr(norm, 'weight'):
+        with torch.no_grad():
+            scale = norm.weight.data.double()
+            lm_head.weight.data = (lm_head.weight.data.double() * scale.unsqueeze(0)).to(lm_head.weight.dtype)
+            norm.weight.data.fill_(1.0)
+            if hasattr(norm, 'bias') and norm.bias is not None:
+                norm.bias.data.fill_(0.0)
+
+    layers = model_utils.get_transformer_layers(model, model_type)
+
+    for layer in tqdm.tqdm(layers, unit="layer", desc="Fusing Layer Norms"):
+        if model_type in [model_utils.LLAMA_MODEL, model_utils.MIXTRAL_MODEL] or model_utils._is_qwen_moe_type(model_type) or model_utils._is_deepseek_type(model_type):
+            input_norm = layer.input_layernorm
+            post_norm = layer.post_attention_layernorm
+        elif model_type == model_utils.OPT_MODEL:
+            input_norm = layer.self_attn_layer_norm
+            post_norm = layer.final_layer_norm
+        else:
+            continue
+
+        if hasattr(input_norm, 'weight'):
+            with torch.no_grad():
+                scale = input_norm.weight.data.double()
+                attn_inputs = [layer.self_attn.q_proj, layer.self_attn.k_proj, layer.self_attn.v_proj]
+                for mod in attn_inputs:
+                    mod.weight.data = (mod.weight.data.double() * scale.unsqueeze(0)).to(mod.weight.dtype)
+                    if hasattr(input_norm, 'bias') and input_norm.bias is not None and mod.bias is not None:
+                        mod.bias.data = (mod.bias.data.double() + torch.matmul(mod.weight.data.double(), input_norm.bias.data.double())).to(mod.bias.dtype)
+                input_norm.weight.data.fill_(1.0)
+                if hasattr(input_norm, 'bias') and input_norm.bias is not None:
+                    input_norm.bias.data.fill_(0.0)
+
+        if hasattr(post_norm, 'weight'):
+            with torch.no_grad():
+                scale = post_norm.weight.data.double()
+                mlp_inputs = []
+                if model_type == model_utils.LLAMA_MODEL:
+                    mlp_inputs = [layer.mlp.up_proj, layer.mlp.gate_proj]
+                elif model_type == model_utils.OPT_MODEL:
+                    mlp_inputs = [layer.fc1]
+                elif model_utils._is_qwen_moe_type(model_type):
+                    mlp_inputs = [layer.mlp.gate]
+                    if hasattr(layer.mlp, 'shared_expert_gate') and layer.mlp.shared_expert_gate is not None:
+                        mlp_inputs.append(layer.mlp.shared_expert_gate)
+                    if hasattr(layer.mlp, 'shared_expert') and layer.mlp.shared_expert is not None:
+                        mlp_inputs.extend([layer.mlp.shared_expert.gate_proj, layer.mlp.shared_expert.up_proj])
+                    if hasattr(layer.mlp, 'experts'):
+                        for expert in layer.mlp.experts:
+                            mlp_inputs.append(expert.up_proj)
+                            mlp_inputs.append(expert.gate_proj)
+                elif model_utils._is_deepseek_type(model_type):
+                    mlp_class_name = layer.mlp.__class__.__name__
+                    if 'MoE' in mlp_class_name:
+                        mlp_inputs = [layer.mlp.gate]
+                        if hasattr(layer.mlp, 'shared_experts') and layer.mlp.shared_experts is not None:
+                            mlp_inputs.extend([layer.mlp.shared_experts.gate_proj, layer.mlp.shared_experts.up_proj])
+                        if hasattr(layer.mlp, 'experts'):
+                            for expert in layer.mlp.experts:
+                                mlp_inputs.append(expert.up_proj)
+                                mlp_inputs.append(expert.gate_proj)
+                    else:
+                        mlp_inputs = [layer.mlp.up_proj, layer.mlp.gate_proj]
+                elif model_type == model_utils.MIXTRAL_MODEL:
+                    mlp_inputs = [layer.block_sparse_moe.gate]
+                    if hasattr(layer.block_sparse_moe, 'experts'):
+                        for expert in layer.block_sparse_moe.experts:
+                            mlp_inputs.append(expert.w1)
+                            mlp_inputs.append(expert.w3)
+
+                for mod in mlp_inputs:
+                    mod.weight.data = (mod.weight.data.double() * scale.unsqueeze(0)).to(mod.weight.dtype)
+                    if hasattr(post_norm, 'bias') and post_norm.bias is not None and mod.bias is not None:
+                        mod.bias.data = (mod.bias.data.double() + torch.matmul(mod.weight.data.double(), post_norm.bias.data.double())).to(mod.bias.dtype)
+
+                post_norm.weight.data.fill_(1.0)
+                if hasattr(post_norm, 'bias') and post_norm.bias is not None:
+                    post_norm.bias.data.fill_(0.0)

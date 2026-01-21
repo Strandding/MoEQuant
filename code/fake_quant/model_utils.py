@@ -6,6 +6,7 @@ import os,sys
 import logging
 
 from quant_layers.quant_layer import QuantDecoderLayer,QuantRMSNorm,QuantLinear,QuantEmbedding,Quantizer
+import quant_layers.quant_layer
 import deepseek_moe_16b_chat
 import mixtral_model
 
@@ -20,13 +21,80 @@ DEEPSEEK_LAYER = deepseek_moe_16b_chat.modeling_deepseek.DeepseekDecoderLayer
 MIXTRAL_MODEL = mixtral_model.modeling_mixtral.MixtralForCausalLM
 MIXTRAL_LAYER = mixtral_model.modeling_mixtral.MixtralDecoderLayer
 
+# Global variables to store dynamically loaded Qwen model classes
+_QWEN_MODEL_CLASS = None
+_QWEN_LAYER_CLASS = None
+
+# Global variables to store dynamically loaded DeepSeek V2 model classes
+_DEEPSEEK_V2_MODEL_CLASS = None
+_DEEPSEEK_V2_LAYER_CLASS = None
+
+def _is_qwen_moe_model(model):
+    """Check if a model is a Qwen MoE model (Qwen1.5/Qwen2/Qwen3/Qwen3-Next)."""
+    model_class_name = model.__class__.__name__
+    if any(pattern in model_class_name for pattern in ['QwenMoe', 'Qwen2Moe', 'Qwen3Moe', 'Qwen3Next']):
+        return True
+    if isinstance(model, QWEN_MODEL):
+        return True
+    return False
+
+def _is_qwen_moe_type(model_type):
+    """Check if a model_type is a Qwen MoE type."""
+    if model_type == QWEN_MODEL or model_type == _QWEN_MODEL_CLASS:
+        return True
+    if model_type is not None:
+        type_name = model_type.__name__ if hasattr(model_type, '__name__') else str(model_type)
+        if any(pattern in type_name for pattern in ['QwenMoe', 'Qwen2Moe', 'Qwen3Moe', 'Qwen3Next']):
+            return True
+    return False
+
+def _is_deepseek_model(model):
+    """Check if a model is a DeepSeek model (V1 or V2)."""
+    model_class_name = model.__class__.__name__
+    if 'Deepseek' in model_class_name:
+        return True
+    if isinstance(model, DEEPSEEK_MODEL):
+        return True
+    return False
+
+def _is_deepseek_v2_model(model):
+    """Check if a model is specifically a DeepSeek V2 model."""
+    model_class_name = model.__class__.__name__
+    if 'DeepseekV2' in model_class_name:
+        return True
+    if model == _DEEPSEEK_V2_MODEL_CLASS:
+        return True
+    return False
+
+def _is_deepseek_type(model_type):
+    """Check if a model_type is a DeepSeek type (V1 or V2)."""
+    if model_type == DEEPSEEK_MODEL or model_type == _DEEPSEEK_V2_MODEL_CLASS:
+        return True
+    if model_type is not None:
+        type_name = model_type.__name__ if hasattr(model_type, '__name__') else str(model_type)
+        if 'Deepseek' in type_name:
+            return True
+    return False
+
+def _is_deepseek_v2_type(model_type):
+    """Check if a model_type is specifically a DeepSeek V2 type."""
+    if model_type == _DEEPSEEK_V2_MODEL_CLASS:
+        return True
+    if model_type is not None:
+        type_name = model_type.__name__ if hasattr(model_type, '__name__') else str(model_type)
+        if 'DeepseekV2' in type_name:
+            return True
+    return False
+
 def model_type_extractor(model):
     if isinstance(model, LLAMA_MODEL):
         return LLAMA_MODEL
     elif isinstance(model, OPT_MODEL):
         return OPT_MODEL
-    elif isinstance(model, QWEN_MODEL):
-        return QWEN_MODEL
+    elif _is_qwen_moe_model(model):
+        return _QWEN_MODEL_CLASS if _QWEN_MODEL_CLASS is not None else QWEN_MODEL
+    elif _is_deepseek_v2_model(model):
+        return _DEEPSEEK_V2_MODEL_CLASS if _DEEPSEEK_V2_MODEL_CLASS is not None else DEEPSEEK_MODEL
     elif isinstance(model, DEEPSEEK_MODEL):
         return DEEPSEEK_MODEL
     elif isinstance(model, MIXTRAL_MODEL):
@@ -39,7 +107,7 @@ def skip(*args, **kwargs):
     pass
 
 def get_rope_function_name(model):
-    if isinstance(model, LLAMA_MODEL) or isinstance(model, QWEN_MODEL):
+    if isinstance(model, LLAMA_MODEL) or _is_qwen_moe_model(model):
         return "apply_rotary_pos_emb"
     raise NotImplementedError
 
@@ -47,7 +115,7 @@ def get_rope_function_name(model):
 def get_layers(model):
     if isinstance(model, OPT_MODEL):
         return model.model.decoder.layers
-    if isinstance(model, LLAMA_MODEL) or isinstance(model, QWEN_MODEL):
+    if isinstance(model, LLAMA_MODEL) or _is_qwen_moe_model(model):
         return model.model.layers
     raise NotImplementedError
 
@@ -64,36 +132,62 @@ def get_llama(model_name, hf_token):
     return model
 
 def get_qwen(model_name, hf_token, args):
+    global _QWEN_MODEL_CLASS, _QWEN_LAYER_CLASS
     torch.nn.init.kaiming_uniform_ = skip
     torch.nn.init.uniform_ = skip
     torch.nn.init.normal_ = skip
-    model = transformers.Qwen2MoeForCausalLM.from_pretrained(model_name, torch_dtype=torch.float16,
-                                                          use_auth_token=hf_token,attn_implementation = "eager",device_map='auto')
-                                                        #   low_cpu_mem_usage=True,attn_implementation = "eager",device_map='auto')
+
+    logging.info('---> Loading model with device_map=auto for multi-GPU support...')
+    model = transformers.AutoModelForCausalLM.from_pretrained(
+        model_name,
+        torch_dtype=torch.float16,
+        use_auth_token=hf_token,
+        attn_implementation="eager",
+        device_map='auto',
+        trust_remote_code=True
+    )
+
+    _QWEN_MODEL_CLASS = model.__class__
+    if hasattr(model, 'model') and hasattr(model.model, 'layers') and len(model.model.layers) > 0:
+        _QWEN_LAYER_CLASS = model.model.layers[0].__class__
+
     model.seqlen = 2048
-    logging.info('---> Loading {} Model with seq_len: {}'.format(model_name, model.seqlen))
+    logging.info('---> Loading {} Model (class: {}) with seq_len: {}'.format(
+        model_name, model.__class__.__name__, model.seqlen))
+
+    # # Record original layer devices before any modifications (for multi-GPU support)
+    layers = model.model.layers
+    layer_devices = []
+    for i in range(len(layers)):
+        # Get device of the first parameter in each layer
+        layer_device = next(layers[i].parameters()).device
+        layer_devices.append(layer_device)
+    embed_device = model.model.embed_tokens.weight.device
+    norm_device = model.model.norm.weight.device
+    lm_head_device = model.lm_head.weight.device
+
     if args.online_hadamard:
         for name,module in model.named_modules():
             if 'down_proj' in name and isinstance(module, torch.nn.Linear):
+                module_device = module.weight.device
                 if 'mlp.experts' in name:
-                    new_module = torch.nn.Linear(module.in_features+256, module.out_features,dtype=module.weight.dtype) # (1048+256)/52 = 128
+                    new_module = torch.nn.Linear(module.in_features+256, module.out_features,dtype=module.weight.dtype, device=module_device) # (1048+256)/52 = 128
                 elif 'mlp.shared_expert' in name:
-                    new_module = torch.nn.Linear(module.in_features+1024, module.out_features,dtype=module.weight.dtype)
+                    new_module = torch.nn.Linear(module.in_features+1024, module.out_features,dtype=module.weight.dtype, device=module_device)
                 with torch.no_grad():
                     new_module.weight[:, :module.in_features] = module.weight.data
                     if module.bias is not None:
                         new_module.bias[:module.out_features].copy_(module.bias)
                 parent_name = name.rsplit('.', 1)[0] if '.' in name else ''
-                if parent_name:  
+                if parent_name:
                     parent = dict(model.named_modules())[parent_name]
                     setattr(parent, name.split('.')[-1], new_module)
-                else:  
+                else:
                     setattr(model, name, new_module)
-                    
+
         model.config.intermediate_size += 1024
         model.config.moe_intermediate_size +=256
     model.seqlen=2048
-    layers = model.model.layers
     args.embed_quant_params = dict(bits=args.a_bits,sym=not args.a_asym,dynamic=True,dynamic_method="perchannel")
     args.weight_quant_params = dict(bits=args.w_bits,sym=not args.w_asym,groupsize=args.w_groupsize,dynamic=True,dynamic_method="pertoken")
     args.norm_quant_params = dict(bits=args.a_bits,sym=not args.a_asym,groupsize=args.a_groupsize,clip_ratio=args.a_clip_ratio,dynamic=True,dynamic_method=args.a_dynamic_method)
@@ -108,20 +202,31 @@ def get_qwen(model_name, hf_token, args):
     args.q_proj_quant_params = dict(bits=args.a_bits,sym=not args.a_asym,groupsize=args.a_groupsize,clip_ratio=args.a_clip_ratio,dynamic=True,dynamic_method=args.a_dynamic_method)
     args.ropeq_quant_params = dict(bits=args.a_bits,sym=not args.a_asym,groupsize=args.a_groupsize,clip_ratio=args.a_clip_ratio,dynamic=True,dynamic_method=args.a_dynamic_method)
     args.k_proj_quant_params = dict(bits=args.a_bits,sym=not args.k_asym,groupsize=args.a_groupsize,clip_ratio=args.a_clip_ratio,dynamic=True,dynamic_method=args.a_dynamic_method)
-    args.qk_matmul_quant_params = dict(bits=args.a_bits,sym=not args.a_asym,groupsize=args.a_groupsize,clip_ratio=args.a_clip_ratio,dynamic=True,dynamic_method=args.a_dynamic_method) 
+    args.qk_matmul_quant_params = dict(bits=args.a_bits,sym=not args.a_asym,groupsize=args.a_groupsize,clip_ratio=args.a_clip_ratio,dynamic=True,dynamic_method=args.a_dynamic_method)
     args.softmax_quant_params = dict(bits=args.a_bits,sym=not args.a_asym,groupsize=args.a_groupsize,clip_ratio=args.a_clip_ratio,dynamic=True,dynamic_method=args.a_dynamic_method)
-    args.o_proj_quant_params = dict(bits=args.a_bits,sym=not args.a_asym,groupsize=args.a_groupsize,clip_ratio=args.a_clip_ratio,dynamic=True,dynamic_method="perchannel") 
+    args.o_proj_quant_params = dict(bits=args.a_bits,sym=not args.a_asym,groupsize=args.a_groupsize,clip_ratio=args.a_clip_ratio,dynamic=True,dynamic_method="perchannel")
     args.resadd1_quant_params = dict(bits=args.a_bits,sym=not args.a_asym,groupsize=args.a_groupsize,clip_ratio=args.a_clip_ratio,dynamic=True,dynamic_method="perchannel")
-    args.up_proj_quant_params = dict(bits=args.a_bits,sym=not args.a_asym,groupsize=args.a_groupsize,clip_ratio=args.k_clip_ratio,dynamic=True,dynamic_method=args.a_dynamic_method) 
+    args.up_proj_quant_params = dict(bits=args.a_bits,sym=not args.a_asym,groupsize=args.a_groupsize,clip_ratio=args.k_clip_ratio,dynamic=True,dynamic_method=args.a_dynamic_method)
     args.gate_proj_quant_params = dict(bits=args.a_bits,sym=not args.a_asym,groupsize=args.a_groupsize,clip_ratio=args.k_clip_ratio,dynamic=True,dynamic_method=args.a_dynamic_method)
     args.silu_quant_params = dict(bits=args.a_bits,sym=not args.a_asym,groupsize=args.a_groupsize,clip_ratio=args.k_clip_ratio,dynamic=True,dynamic_method=args.a_dynamic_method)
-    args.down_proj_quant_params = dict(bits=args.a_bits,sym=not args.a_asym,groupsize=args.a_groupsize,clip_ratio=args.k_clip_ratio,dynamic=True,dynamic_method="perchannel") 
+    args.down_proj_quant_params = dict(bits=args.a_bits,sym=not args.a_asym,groupsize=args.a_groupsize,clip_ratio=args.k_clip_ratio,dynamic=True,dynamic_method="perchannel")
     args.resadd2_quant_params = dict(bits=args.a_bits,sym=not args.a_asym,groupsize=args.a_groupsize,clip_ratio=args.k_clip_ratio,dynamic=True,dynamic_method="perchannel")
+
+    if hasattr(model.model, 'rotary_emb'):
+        args.rotary_emb = model.model.rotary_emb
+        logging.info('---> Using model-level rotary_emb for quantization')
+
+    # Replace layers and move to correct devices (multi-GPU support)
     for i in range(len(layers)):
-        layers[i] = QuantDecoderLayer(model.config,layers[i],args)
-    model.model.embed_tokens = QuantEmbedding(model.model.embed_tokens,args.embed_quant_params) # TODO add embed_tokens's quantizaton-config
-    model.model.norm = QuantRMSNorm(model.model.norm,dict(bits=32))
-    model.lm_head = QuantLinear(model.lm_head,dict(bits=32))
+        original_device = layer_devices[i]
+        layers[i] = QuantDecoderLayer(model.config, layers[i], args)
+        # Move the new layer to the same device as the original
+        layers[i] = layers[i].to(original_device)
+
+    # Replace and move embed_tokens, norm, lm_head to their original devices
+    model.model.embed_tokens = QuantEmbedding(model.model.embed_tokens, args.embed_quant_params).to(embed_device)
+    model.model.norm = QuantRMSNorm(model.model.norm, dict(bits=32)).to(norm_device)
+    model.lm_head = QuantLinear(model.lm_head, dict(bits=32)).to(lm_head_device)
     return model
 
 
@@ -154,8 +259,10 @@ def get_model_type(model):
         model_type = OPT_MODEL
     elif isinstance(model, LLAMA_MODEL):
         model_type = LLAMA_MODEL
-    elif isinstance(model, QWEN_MODEL):
-        model_type = QWEN_MODEL
+    elif _is_qwen_moe_model(model):
+        model_type = _QWEN_MODEL_CLASS if _QWEN_MODEL_CLASS is not None else QWEN_MODEL
+    elif _is_deepseek_v2_model(model):
+        model_type = _DEEPSEEK_V2_MODEL_CLASS if _DEEPSEEK_V2_MODEL_CLASS is not None else model.__class__
     elif isinstance(model, DEEPSEEK_MODEL):
         model_type = DEEPSEEK_MODEL
     elif isinstance(model, MIXTRAL_MODEL):
@@ -165,7 +272,7 @@ def get_model_type(model):
     return model_type
 
 def get_embeddings(model, model_type):# -> list[torch.nn.Module]:
-    if model_type == LLAMA_MODEL or model_type== QWEN_MODEL or model_type == DEEPSEEK_MODEL or model_type == MIXTRAL_MODEL:
+    if model_type == LLAMA_MODEL or _is_qwen_moe_type(model_type) or _is_deepseek_type(model_type) or model_type == MIXTRAL_MODEL:
         return [model.model.embed_tokens]
     elif model_type == OPT_MODEL:
         return [model.model.decoder.embed_tokens, model.model.decoder.embed_positions]
@@ -174,7 +281,7 @@ def get_embeddings(model, model_type):# -> list[torch.nn.Module]:
 
 
 def get_transformer_layers(model, model_type):
-    if model_type == LLAMA_MODEL or model_type== QWEN_MODEL or model_type == DEEPSEEK_MODEL or model_type == MIXTRAL_MODEL:
+    if model_type == LLAMA_MODEL or _is_qwen_moe_type(model_type) or _is_deepseek_type(model_type) or model_type == MIXTRAL_MODEL:
         return [layer for layer in model.model.layers]
     elif model_type == OPT_MODEL:
         return [layer for layer in model.model.decoder.layers]
@@ -183,7 +290,7 @@ def get_transformer_layers(model, model_type):
 
 
 def get_lm_head(model, model_type):
-    if model_type == LLAMA_MODEL or model_type== QWEN_MODEL or model_type == DEEPSEEK_MODEL or model_type == MIXTRAL_MODEL:
+    if model_type == LLAMA_MODEL or _is_qwen_moe_type(model_type) or _is_deepseek_type(model_type) or model_type == MIXTRAL_MODEL:
         return model.lm_head
     elif model_type == OPT_MODEL:
         return model.lm_head
@@ -195,13 +302,14 @@ def get_pre_head_layernorm(model, model_type):
         pre_head_layernorm = model.model.norm
         assert isinstance(pre_head_layernorm,
                           transformers.models.llama.modeling_llama.LlamaRMSNorm)
-    elif model_type ==  QWEN_MODEL:
+    elif _is_qwen_moe_type(model_type):
         pre_head_layernorm = model.model.norm
         assert isinstance(pre_head_layernorm,QuantRMSNorm)
                           #transformers.models.qwen2_moe.modeling_qwen2_moe.Qwen2MoeRMSNorm)
-    elif model_type == DEEPSEEK_MODEL:
+    elif _is_deepseek_type(model_type):
         pre_head_layernorm = model.model.norm
-        assert isinstance(pre_head_layernorm, deepseek_moe_16b_chat.modeling_deepseek.DeepseekRMSNorm)
+        if model_type == DEEPSEEK_MODEL:
+            assert isinstance(pre_head_layernorm, deepseek_moe_16b_chat.modeling_deepseek.DeepseekRMSNorm)
     elif model_type == MIXTRAL_MODEL:
         pre_head_layernorm = model.model.norm
         assert isinstance(pre_head_layernorm, mixtral_model.modeling_mixtral.MixtralRMSNorm)
@@ -214,7 +322,7 @@ def get_pre_head_layernorm(model, model_type):
 
 def get_mlp_bottleneck_size(model):
     model_type = get_model_type(model)
-    if model_type == LLAMA_MODEL or model_type== QWEN_MODEL or model_type== DEEPSEEK_MODEL:
+    if model_type == LLAMA_MODEL or _is_qwen_moe_type(model_type) or _is_deepseek_type(model_type):
         return model.config.intermediate_size
     elif model_type == OPT_MODEL:
         return model.config.ffn_dim

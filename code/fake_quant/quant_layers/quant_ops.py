@@ -101,6 +101,8 @@ class QuantLinear(nn.Linear):
             weight = self.weight_quantizer(weight)
         x = x.to(weight.device)
         out = F.linear(x, weight, bias)
+        if torch.isnan(out).any():
+            breakpoint()
         if self.use_act_quant:
             out = self.act_quantizer(out)
 
@@ -194,6 +196,10 @@ class QuantRMSNorm(nn.Module):
         self.fuse_weight = False 
 
     def forward(self, hidden_states):
+        # Move hidden_states to weight's device for multi-GPU support
+        weight_device = self.weight.device
+        if hidden_states.device != weight_device:
+            hidden_states = hidden_states.to(weight_device)
         i_dtype = hidden_states.dtype
         variance = hidden_states.to(torch.float32).pow(2).mean(-1, keepdim=True)
         hidden_states = hidden_states * torch.rsqrt(variance + self.eps)
@@ -310,6 +316,9 @@ class QuantEmbedding(nn.Embedding):
         self.use_act_quant = False
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
+        # Move input to weight's device for multi-GPU support
+        if input.device != self.weight.device:
+            input = input.to(self.weight.device)
         out = F.embedding(
             input,
             self.weight,

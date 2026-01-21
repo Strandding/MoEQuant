@@ -411,12 +411,35 @@ def get_task_name_from_object(task_object):
     )
 
 
+# def get_task_dict(task_name_list: List[Union[str, lm_eval.base.Task]]):
+#     task_name_dict = {
+#         task_name: get_task(task_name)()
+#         for task_name in task_name_list
+#         if isinstance(task_name, str)
+#     }
+#     task_name_from_object_dict = {
+#         get_task_name_from_object(task_object): task_object
+#         for task_object in task_name_list
+#         if not isinstance(task_object, str)
+#     }
+#     assert set(task_name_dict.keys()).isdisjoint(set(task_name_from_object_dict.keys()))
+#     return {**task_name_dict, **task_name_from_object_dict}
+
 def get_task_dict(task_name_list: List[Union[str, lm_eval.base.Task]]):
-    task_name_dict = {
-        task_name: get_task(task_name)()
-        for task_name in task_name_list
-        if isinstance(task_name, str)
-    }
+    # [修改] 拆解字典推导式，打印正在加载的任务名
+    task_name_dict = {}
+    for task_name in task_name_list:
+        if isinstance(task_name, str):
+            print(f"Loading task: {task_name} ...", end="", flush=True)
+            try:
+                task_obj = get_task(task_name)()
+                task_name_dict[task_name] = task_obj
+                print(" Done.")
+            except Exception as e:
+                print(f" FAILED! Error: {e}")
+                raise e
+    # [修改结束]
+    
     task_name_from_object_dict = {
         get_task_name_from_object(task_object): task_object
         for task_object in task_name_list

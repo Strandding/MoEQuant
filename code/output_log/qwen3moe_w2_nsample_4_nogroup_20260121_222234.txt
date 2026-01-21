@@ -1,0 +1,88 @@
+==================== 任务启动信息 ====================
+启动时间: 2026-01-21 22:22:34
+当前目录: /export/home2/zihan/MoEQuant/code
+模型名称: Qwen3-30B-A3B-Base
+权重位数 (W_BITS): 2
+样本数量 (N_SAMPLES): 4
+显卡设置: CUDA_VISIBLE_DEVICES=4,5
+保存路径: /dataset/common/quant_model/moequant_qwen3moe_w2_selfebss_nsample_4_groupsize128.pth
+校准数据: ./EBSS_data/ebss_qwen3moe_selfbuild_merged.jsonl
+完整执行命令:
+python fake_quant/main.py --model /dataset/common/pretrain_model/Qwen3-30B-A3B-Base --w_bits 2 --nsamples 4 --save_qmodel_path /dataset/common/quant_model/moequant_qwen3moe_w2_selfebss_nsample_4_groupsize128.pth --EBSS_calib --AGQ_GPTQ
+======================================================
+
+
+
+Arguments: 
+{'AGQ_GPTQ': True,
+ 'EBSS_calib': True,
+ 'a_asym': False,
+ 'a_bits': 16,
+ 'a_clip_ratio': 1.0,
+ 'a_dynamic_method': 'pertensor',
+ 'a_groupsize': 128,
+ 'act_order': False,
+ 'bsz': 1,
+ 'cal_dataset': 'wikitext2',
+ 'calib_path': './EBSS_data/ebss_qwen3moe_selfbuild_merged.jsonl',
+ 'capture_layer_io': False,
+ 'distribute': False,
+ 'do_smooth': False,
+ 'eval_dataset': 'wikitext2',
+ 'fp32_had': True,
+ 'fully_quant': False,
+ 'hf_token': None,
+ 'human_res': './res_moe_qwen3moe_base_w2_selfebss_nsample_4',
+ 'int8_down_proj': False,
+ 'k_asym': False,
+ 'k_bits': 16,
+ 'k_clip_ratio': 1.0,
+ 'k_groupsize': -1,
+ 'k_pre_rope': False,
+ 'layer_idx': 10,
+ 'lm_eval': False,
+ 'lm_eval_batch_size': 128,
+ 'load_qmodel_path': None,
+ 'model': '/dataset/common/pretrain_model/Qwen3-30B-A3B-Base',
+ 'nsamples': 4,
+ 'online_hadamard': False,
+ 'percdamp': 0.01,
+ 'pre_eval': False,
+ 'quant_test': True,
+ 'rotate': False,
+ 'rotate_mode': 'hadamard',
+ 'rotation_seed': -1,
+ 'save_name': '20260121_222248',
+ 'save_path': '/export/home2/zihan/MoEQuant/code/log',
+ 'save_qmodel_path': '/dataset/common/quant_model/moequant_qwen3moe_w2_selfebss_nsample_4_groupsize128.pth',
+ 'seed': 0,
+ 'shared_expert_act_calib': False,
+ 'static_test': False,
+ 'tasks': ['piqa',
+           'hellaswag',
+           'arc_easy',
+           'arc_challenge',
+           'winogrande',
+           'lambada'],
+ 'v_asym': False,
+ 'v_bits': 16,
+ 'v_clip_ratio': 1.0,
+ 'v_groupsize': -1,
+ 'w_asym': False,
+ 'w_bits': 2,
+ 'w_clip': True,
+ 'w_groupsize': 128,
+ 'w_rtn': False,
+ 'wandb': False,
+ 'wandb_id': None,
+ 'wandb_project': None}
+------------------------------------------------------------
+---> Loading model with device_map=auto for multi-GPU support...
+`torch_dtype` is deprecated! Use `dtype` instead!
+Loading checkpoint shards:   0%|          | 0/16 [00:00<?, ?it/s]Loading checkpoint shards:   6%|▋         | 1/16 [00:01<00:23,  1.54s/it]Loading checkpoint shards:  12%|█▎        | 2/16 [00:03<00:23,  1.70s/it]Loading checkpoint shards:  19%|█▉        | 3/16 [00:05<00:24,  1.88s/it]Loading checkpoint shards:  25%|██▌       | 4/16 [00:07<00:24,  2.01s/it]Loading checkpoint shards:  31%|███▏      | 5/16 [00:10<00:24,  2.21s/it]Loading checkpoint shards:  38%|███▊      | 6/16 [00:12<00:21,  2.11s/it]Loading checkpoint shards:  44%|████▍     | 7/16 [00:13<00:18,  2.02s/it]Loading checkpoint shards:  50%|█████     | 8/16 [00:16<00:16,  2.03s/it]Loading checkpoint shards:  56%|█████▋    | 9/16 [00:18<00:15,  2.15s/it]Loading checkpoint shards:  62%|██████▎   | 10/16 [00:20<00:13,  2.18s/it]Loading checkpoint shards:  69%|██████▉   | 11/16 [00:22<00:10,  2.02s/it]Loading checkpoint shards:  75%|███████▌  | 12/16 [00:24<00:07,  1.95s/it]Loading checkpoint shards:  81%|████████▏ | 13/16 [00:26<00:05,  1.96s/it]Loading checkpoint shards:  88%|████████▊ | 14/16 [00:28<00:03,  1.94s/it]Loading checkpoint shards:  94%|█████████▍| 15/16 [00:30<00:01,  1.98s/it]Loading checkpoint shards: 100%|██████████| 16/16 [00:30<00:00,  1.57s/it]Loading checkpoint shards: 100%|██████████| 16/16 [00:30<00:00,  1.92s/it]
+---> Loading /dataset/common/pretrain_model/Qwen3-30B-A3B-Base Model (class: Qwen3MoeForCausalLM) with seq_len: 2048
+---> Using model-level rotary_emb for quantization
+Token indices sequence length is longer than the specified maximum sequence length for this model (299078 > 131072). Running this sequence through the model will result in indexing errors
+-----GPTQ Quantization-----
+
+Layer 0: mlp.experts.127.up_proj  mlp.experts.127.gate_proj  mlp.experts.126.up_proj  mlp.experts.0.gate_proj  mlp.experts.0.up_proj  mlp.experts.1.gate_proj  mlp.experts.1.up_proj  mlp.experts.2.gate_proj  mlp.experts.2.up_proj  mlp.experts.3.gate_proj  mlp.experts.3.up_proj  mlp.experts.4.gate_proj  mlp.experts.4.up_proj  mlp.experts.5.gate_proj  mlp.experts.5.up_proj  mlp.experts.6.gate_proj  mlp.experts.6.up_proj  mlp.experts.7.gate_proj  mlp.experts.7.up_proj  mlp.experts.8.gate_proj  mlp.experts.8.up_proj  mlp.experts.9.gate_proj  mlp.experts.9.up_proj  mlp.experts.10.gate_proj  mlp.experts.10.up_proj  mlp.experts.11.gate_proj  mlp.experts.11.up_proj  mlp.experts.12.gate_proj  mlp.experts.12.up_proj  mlp.experts.13.gate_proj  mlp.experts.13.up_proj  mlp.experts.14.gate_proj  mlp.experts.14.up_proj  mlp.experts.15.gate_proj  mlp.experts.15.up_proj  mlp.experts.16.gate_proj  mlp.experts.16.up_proj  mlp.experts.17.gate_proj  mlp.experts.17.up_proj  mlp.experts.18.gate_proj  mlp.experts.18.up_proj  mlp.experts.19.gate_proj  mlp.experts.19.up_proj  mlp.experts.20.gate_proj  mlp.experts.20.up_proj  mlp.experts.21.gate_proj  mlp.experts.21.up_proj  mlp.experts.22.gate_proj  mlp.experts.22.up_proj  mlp.experts.23.gate_proj  mlp.experts.23.up_proj  mlp.experts.24.gate_proj  mlp.experts.24.up_proj  mlp.experts.25.gate_proj  mlp.experts.25.up_proj  mlp.experts.26.gate_proj  mlp.experts.26.up_proj  mlp.experts.27.gate_proj  mlp.experts.27.up_proj  mlp.experts.28.gate_proj  mlp.experts.28.up_proj  mlp.experts.29.gate_proj  mlp.experts.29.up_proj  mlp.experts.30.gate_proj  mlp.experts.30.up_proj  mlp.experts.31.gate_proj  mlp.experts.31.up_proj  mlp.experts.32.gate_proj  mlp.experts.32.up_proj  mlp.experts.33.gate_proj  mlp.experts.33.up_proj  mlp.experts.34.gate_proj  mlp.experts.34.up_proj  mlp.experts.35.gate_proj  mlp.experts.35.up_proj  mlp.experts.36.gate_proj  mlp.experts.36.up_proj  mlp.experts.37.gate_proj  mlp.experts.37.up_proj  mlp.experts.38.gate_proj  mlp.experts.38.up_proj  mlp.experts.39.gate_proj  mlp.experts.39.up_proj  mlp.experts.40.gate_proj  mlp.experts.40.up_proj  mlp.experts.41.gate_proj  mlp.experts.41.up_proj  mlp.experts.42.gate_proj  mlp.experts.42.up_proj  mlp.experts.43.gate_proj  mlp.experts.43.up_proj  mlp.experts.44.gate_proj  mlp.experts.44.up_proj  mlp.experts.45.gate_proj  mlp.experts.45.up_proj  

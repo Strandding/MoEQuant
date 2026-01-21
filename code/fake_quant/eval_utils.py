@@ -6,22 +6,28 @@ import os
 import logging
 from tqdm import tqdm
 
+def _unpack_layer_output(output):
+    if isinstance(output, (tuple, list)):
+        return output[0]
+    return output
+
 
 @torch.no_grad()
 def evaluator(model, testenc, dev, args):
 
     model.eval()
 
-    if 'opt' in args.model:
+    model_name = args.model.lower()
+    if 'opt' in model_name:
         opt_type = True
         llama_type = False
-    elif 'meta' in args.model:
+    elif 'meta' in model_name:
         llama_type = True
         opt_type = False
-    elif 'qwen' in args.model:
+    elif 'qwen' in model_name:
         llama_type = True
         opt_type = False
-    elif 'deepseek' in args.model or 'mixtral' in args.model:
+    elif 'deepseek' in model_name or 'mixtral' in model_name:
         llama_type = True
         opt_type = False
     else:
@@ -113,9 +119,9 @@ def evaluator(model, testenc, dev, args):
 
         for j in range(nbatches):
             if opt_type:
-                outs[j] = layer(inps[j], attention_mask=attention_mask)[0]
+                outs[j] = _unpack_layer_output(layer(inps[j], attention_mask=attention_mask))
             elif llama_type:
-                outs[j] = layer(inps[j], attention_mask=attention_mask, position_ids=position_ids)[0]
+                outs[j] = _unpack_layer_output(layer(inps[j], attention_mask=attention_mask, position_ids=position_ids))
         # torch.save(outs,'./blocks_wiki_outs/block'+str(i)+'.pth')
         layers[i] = layer.cpu()
         del layer

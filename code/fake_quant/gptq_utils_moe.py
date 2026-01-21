@@ -175,6 +175,32 @@ class GPTQ:
 
 def build_prompt(text):
     return text        
+
+def get_num_experts(config, model=None):
+    """Best-effort expert count across Qwen/DeepSeek/Mixtral variants."""
+    if hasattr(config, 'num_experts') and config.num_experts is not None:
+        return config.num_experts
+    if hasattr(config, 'n_routed_experts') and config.n_routed_experts is not None:
+        return config.n_routed_experts
+    if hasattr(config, 'num_local_experts') and config.num_local_experts is not None:
+        return config.num_local_experts
+    if model is not None:
+        for layer in getattr(model.model, 'layers', []):
+            if hasattr(layer, 'mlp') and hasattr(layer.mlp, 'experts'):
+                return len(layer.mlp.experts)
+            if hasattr(layer, 'block_sparse_moe') and hasattr(layer.block_sparse_moe, 'experts'):
+                return len(layer.block_sparse_moe.experts)
+    return None
+
+def get_top_k(config, default=2):
+    if hasattr(config, 'num_experts_per_tok') and config.num_experts_per_tok is not None:
+        return config.num_experts_per_tok
+    return default
+
+def _unpack_layer_output(output):
+    if isinstance(output, (tuple, list)):
+        return output[0]
+    return output
         
 @torch.no_grad()
 def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
@@ -194,6 +220,9 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
     use_cache = model.config.use_cache
     model.config.use_cache = False
     layers = model.model.layers
+
+    num_experts = get_num_experts(model.config, model)
+    top_k = get_top_k(model.config, default=2)
 
     hf_device_map = getattr(model, "hf_device_map", None)
     multi_device = isinstance(hf_device_map, dict) and len(set(hf_device_map.values())) > 1
@@ -306,10 +335,16 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
         routing_scores = []
         selected_experts = []
         routing_scores_shared = []
+        layer_num_experts = num_experts
+        if layer_num_experts is None:
+            if hasattr(layer, "mlp") and hasattr(layer.mlp, "experts"):
+                layer_num_experts = len(layer.mlp.experts)
+            elif hasattr(layer, "block_sparse_moe") and hasattr(layer.block_sparse_moe, "experts"):
+                layer_num_experts = len(layer.block_sparse_moe.experts)
         # Precompute routing for MoE experts even if gates are filtered out.
         def save_gate_res_qwen(module, inp, out):
             routing_score = F.softmax(out, dim=1, dtype=torch.float)
-            routing_score, selected_expert = torch.topk(routing_score, 4, dim=-1)
+            routing_score, selected_expert = torch.topk(routing_score, top_k, dim=-1)
             routing_scores.append(routing_score.tolist())
             selected_experts.append(selected_expert.tolist())
         def save_gate_res_deepseek(module, inp, out):
@@ -317,7 +352,7 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
             selected_experts.append(out[0].tolist())
         def save_gate_res_mixtral(module, inp, out):
             routing_score = F.softmax(out, dim=1, dtype=torch.float)
-            routing_score, selected_expert = torch.topk(routing_score, 2, dim=-1)
+            routing_score, selected_expert = torch.topk(routing_score, top_k, dim=-1)
             routing_score /= routing_score.sum(dim=-1, keepdim=True)
             routing_scores.append(routing_score.tolist())
             selected_experts.append(selected_expert.tolist())
@@ -330,12 +365,12 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
             gate_handles.append(layer.block_sparse_moe.gate.register_forward_hook(save_gate_res_mixtral))
         if gate_handles:
             for j in range(args.nsamples):
-                outs[j] = layer(
+                outs[j] = _unpack_layer_output(layer(
                     inps[j].unsqueeze(0),
                     attention_mask=attention_mask_dev,
                     position_ids=position_ids_dev,
                     cur_sample=j,
-                )[0]
+                ))
             routing_scores = torch.tensor(routing_scores)
             selected_experts = torch.tensor(selected_experts)
             for h in gate_handles:
@@ -372,10 +407,10 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
                                 expert_idx = int(parts[idx + 1])
                                 break
 
-                        # 只量化0号专家，跳过其他专家
-                        if expert_idx not in [0] or 'gate_proj' in name or 'down_proj' in name:
-                            # print(f'(Skipping expert {expert_idx}: {name})', end='  ', flush=True)
-                            continue
+                        # # 只量化0号专家，跳过其他专家
+                        # if expert_idx not in [0] or 'gate_proj' in name or 'down_proj' in name:
+                        #     # print(f'(Skipping expert {expert_idx}: {name})', end='  ', flush=True)
+                        #     continue
                     except (ValueError, IndexError):
                         # 如果无法解析专家编号，保险起见跳过
                         print(f'(Warning: Cannot parse expert index from {name}, skipping)', end='  ', flush=True)
@@ -423,7 +458,7 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
                     if name not in gptq:
                         continue
                     if 'mlp.experts' in name and i>=1:
-                        handles.append(subset[name].register_forward_hook(add_batch_score(name,routing_scores,selected_experts,64)))
+                        handles.append(subset[name].register_forward_hook(add_batch_score(name,routing_scores,selected_experts,layer_num_experts)))
                     else:
                         handles.append(subset[name].register_forward_hook(add_batch_deepseek(name)))
             elif 'mixtral' in args.model.lower():
@@ -431,7 +466,7 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
                     if name not in gptq:
                         continue
                     if 'block_sparse_moe.experts' in name:
-                        handles.append(subset[name].register_forward_hook(add_batch_score(name,routing_scores,selected_experts,8)))
+                        handles.append(subset[name].register_forward_hook(add_batch_score(name,routing_scores,selected_experts,layer_num_experts)))
                     else:
                         handles.append(subset[name].register_forward_hook(add_batch_qwen(name)))
             else:
@@ -439,7 +474,7 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
                     if name not in gptq:
                         continue
                     if 'mlp.experts' in name:
-                        handles.append(subset[name].register_forward_hook(add_batch_score(name,routing_scores,selected_experts,60)))
+                        handles.append(subset[name].register_forward_hook(add_batch_score(name,routing_scores,selected_experts,layer_num_experts)))
                     elif 'mlp.shared_expert.' in name:
                         handles.append(subset[name].register_forward_hook(add_batch_shared_score(name,routing_scores_shared)))
                     else:
@@ -447,12 +482,12 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
             # all sample 
             # layer.mlp.static_observer=True
             for jjj in range(args.nsamples):
-                outs[jjj] = layer(
+                outs[jjj] = _unpack_layer_output(layer(
                     inps[jjj].unsqueeze(0),
                     attention_mask=attention_mask_dev,
                     position_ids=position_ids_dev,
                     cur_sample=jjj,
-                )[0]
+                ))
             for h in handles:
                 h.remove()
             for name in subset:
@@ -467,7 +502,7 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
                 if name=='mlp.gate' or name == 'block_sparse_moe.gate':
                     def save_gate_res_qwen(module, inp, out):
                         routing_score = F.softmax(out, dim=1, dtype=torch.float)
-                        routing_score, selected_expert = torch.topk(routing_score, 4, dim=-1)
+                        routing_score, selected_expert = torch.topk(routing_score, top_k, dim=-1)
                         routing_scores.append(routing_score.tolist())
                         selected_experts.append(selected_expert.tolist())
                     def save_gate_res_deepseek(module, inp, out):
@@ -475,7 +510,7 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
                         selected_experts.append(out[0].tolist())
                     def save_gate_res_mixtral(module, inp, out):
                         routing_score = F.softmax(out, dim=1, dtype=torch.float)
-                        routing_score, selected_expert = torch.topk(routing_score, 2, dim=-1)
+                        routing_score, selected_expert = torch.topk(routing_score, top_k, dim=-1)
                         routing_score /= routing_score.sum(dim=-1, keepdim=True)
                         routing_scores.append(routing_score.tolist())
                         selected_experts.append(selected_expert.tolist())
@@ -487,11 +522,11 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
                     elif 'mixtral' in args.model.lower():
                         handles.append(layer.block_sparse_moe.gate.register_forward_hook(save_gate_res_mixtral))
                     for j in range(args.nsamples):
-                        outs[j] = layer(
+                        outs[j] = _unpack_layer_output(layer(
                             inps[j].unsqueeze(0),
                             attention_mask=attention_mask_dev,
                             position_ids=position_ids_dev,
-                        )[0]
+                        ))
                     routing_scores = torch.tensor(routing_scores)
                     selected_experts = torch.tensor(selected_experts)
                     for h in handles:
@@ -504,22 +539,22 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
                     handles = []
                     handles.append(layer.mlp.shared_expert_gate.register_forward_hook(save_sharedgate_res))
                     for j in range(args.nsamples):
-                        outs[j] = layer(
+                        outs[j] = _unpack_layer_output(layer(
                             inps[j].unsqueeze(0),
                             attention_mask=attention_mask_dev,
                             position_ids=position_ids_dev,
-                        )[0]
+                        ))
                     routing_scores_shared = torch.tensor(routing_scores_shared)
                     for h in handles:
                         h.remove()
         # layer.mlp.static_observer=False
         
         for j in range(args.nsamples):
-            outs[j] = layer(
+            outs[j] = _unpack_layer_output(layer(
                 inps[j].unsqueeze(0),
                 attention_mask=attention_mask_dev,
                 position_ids=position_ids_dev,
-            )[0]
+            ))
 
         # layers[i] = layer.cpu()
         layers[i] = layer

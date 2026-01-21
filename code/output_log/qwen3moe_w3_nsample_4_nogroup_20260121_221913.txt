@@ -1,0 +1,93 @@
+==================== 任务启动信息 ====================
+启动时间: 2026-01-21 22:19:13
+当前目录: /export/home2/zihan/MoEQuant/code
+模型名称: Qwen3-30B-A3B-Base
+权重位数 (W_BITS): 3
+样本数量 (N_SAMPLES): 4
+显卡设置: CUDA_VISIBLE_DEVICES=6
+保存路径: /dataset/common/quant_model/moequant_qwen3moe_w3_selfebss_nsample_4_groupsize128.pth
+校准数据: ./EBSS_data/ebss_qwen3moe_selfbuild_merged.jsonl
+完整执行命令:
+python fake_quant/main.py --model /dataset/common/pretrain_model/Qwen3-30B-A3B-Base --w_bits 3 --nsamples 4 --save_qmodel_path /dataset/common/quant_model/moequant_qwen3moe_w3_selfebss_nsample_4_groupsize128.pth --EBSS_calib --AGQ_GPTQ
+======================================================
+
+
+
+Arguments: 
+{'AGQ_GPTQ': True,
+ 'EBSS_calib': True,
+ 'a_asym': False,
+ 'a_bits': 16,
+ 'a_clip_ratio': 1.0,
+ 'a_dynamic_method': 'pertensor',
+ 'a_groupsize': 128,
+ 'act_order': False,
+ 'bsz': 1,
+ 'cal_dataset': 'wikitext2',
+ 'calib_path': './EBSS_data/ebss_qwen3moe_selfbuild_merged.jsonl',
+ 'capture_layer_io': False,
+ 'distribute': False,
+ 'do_smooth': False,
+ 'eval_dataset': 'wikitext2',
+ 'fp32_had': True,
+ 'fully_quant': False,
+ 'hf_token': None,
+ 'human_res': './res_moe_qwen3moe_base_w3_selfebss_nsample_4',
+ 'int8_down_proj': False,
+ 'k_asym': False,
+ 'k_bits': 16,
+ 'k_clip_ratio': 1.0,
+ 'k_groupsize': -1,
+ 'k_pre_rope': False,
+ 'layer_idx': 10,
+ 'lm_eval': False,
+ 'lm_eval_batch_size': 128,
+ 'load_qmodel_path': None,
+ 'model': '/dataset/common/pretrain_model/Qwen3-30B-A3B-Base',
+ 'nsamples': 4,
+ 'online_hadamard': False,
+ 'percdamp': 0.01,
+ 'pre_eval': False,
+ 'quant_test': True,
+ 'rotate': False,
+ 'rotate_mode': 'hadamard',
+ 'rotation_seed': -1,
+ 'save_name': '20260121_221930',
+ 'save_path': '/export/home2/zihan/MoEQuant/code/log',
+ 'save_qmodel_path': '/dataset/common/quant_model/moequant_qwen3moe_w3_selfebss_nsample_4_groupsize128.pth',
+ 'seed': 0,
+ 'shared_expert_act_calib': False,
+ 'static_test': False,
+ 'tasks': ['piqa',
+           'hellaswag',
+           'arc_easy',
+           'arc_challenge',
+           'winogrande',
+           'lambada'],
+ 'v_asym': False,
+ 'v_bits': 16,
+ 'v_clip_ratio': 1.0,
+ 'v_groupsize': -1,
+ 'w_asym': False,
+ 'w_bits': 3,
+ 'w_clip': True,
+ 'w_groupsize': 128,
+ 'w_rtn': False,
+ 'wandb': False,
+ 'wandb_id': None,
+ 'wandb_project': None}
+------------------------------------------------------------
+---> Loading model with device_map=auto for multi-GPU support...
+`torch_dtype` is deprecated! Use `dtype` instead!
+We will use 90% of the memory on device 0 for storing the model, and 10% for the buffer to avoid OOM. You can set `max_memory` in to a higher value to use more memory (at your own risk).
+Loading checkpoint shards:   0%|          | 0/16 [00:00<?, ?it/s]Loading checkpoint shards:   6%|▋         | 1/16 [00:01<00:22,  1.50s/it]Loading checkpoint shards:  12%|█▎        | 2/16 [00:02<00:17,  1.26s/it]Loading checkpoint shards:  19%|█▉        | 3/16 [00:03<00:13,  1.07s/it]Loading checkpoint shards:  25%|██▌       | 4/16 [00:04<00:11,  1.02it/s]Loading checkpoint shards:  31%|███▏      | 5/16 [00:05<00:10,  1.07it/s]Loading checkpoint shards:  38%|███▊      | 6/16 [00:06<00:10,  1.04s/it]Loading checkpoint shards:  44%|████▍     | 7/16 [00:07<00:08,  1.02it/s]Loading checkpoint shards:  50%|█████     | 8/16 [00:08<00:07,  1.07it/s]Loading checkpoint shards:  56%|█████▋    | 9/16 [00:08<00:06,  1.10it/s]Loading checkpoint shards:  62%|██████▎   | 10/16 [00:10<00:06,  1.03s/it]Loading checkpoint shards:  69%|██████▉   | 11/16 [00:11<00:05,  1.19s/it]Loading checkpoint shards:  75%|███████▌  | 12/16 [00:13<00:05,  1.36s/it]Loading checkpoint shards:  81%|████████▏ | 13/16 [00:14<00:03,  1.21s/it]Loading checkpoint shards:  88%|████████▊ | 14/16 [00:15<00:02,  1.11s/it]Loading checkpoint shards:  94%|█████████▍| 15/16 [00:16<00:01,  1.03s/it]Loading checkpoint shards: 100%|██████████| 16/16 [00:18<00:00,  1.43s/it]Loading checkpoint shards: 100%|██████████| 16/16 [00:18<00:00,  1.15s/it]
+---> Loading /dataset/common/pretrain_model/Qwen3-30B-A3B-Base Model (class: Qwen3MoeForCausalLM) with seq_len: 2048
+---> Using model-level rotary_emb for quantization
+Token indices sequence length is longer than the specified maximum sequence length for this model (299078 > 131072). Running this sequence through the model will result in indexing errors
+Traceback (most recent call last):
+  File "/export/home2/zihan/MoEQuant/code/fake_quant/main.py", line 400, in <module>
+    main()
+  File "/export/home2/zihan/MoEQuant/code/fake_quant/main.py", line 304, in main
+    with open(args.calib_path, encoding='utf-8') as file:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: './EBSS_data/ebss_qwen3moe_selfbuild_merged.jsonl'

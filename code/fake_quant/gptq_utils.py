@@ -12,6 +12,11 @@ import math
 torch.backends.cuda.matmul.allow_tf32 = False
 torch.backends.cudnn.allow_tf32 = False
 
+def _unpack_layer_output(output):
+    if isinstance(output, (tuple, list)):
+        return output[0]
+    return output
+
 
 class GPTQ:
 
@@ -278,7 +283,7 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
             # all sample 
             # layer.mlp.static_observer=True
             for j in range(args.nsamples):
-                outs[j] = layer(inps[j].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids)[0]
+                outs[j] = _unpack_layer_output(layer(inps[j].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids))
             for h in handles:
                 h.remove()
 
@@ -292,7 +297,7 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
                 gptq[name].free()
         # layer.mlp.static_observer=False
         for j in range(args.nsamples):
-            outs[j] = layer(inps[j].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids)[0]
+            outs[j] = _unpack_layer_output(layer(inps[j].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids))
 
         # layers[i] = layer.cpu()
         layers[i] = layer

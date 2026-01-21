@@ -93,6 +93,7 @@ def _forward_logits(model, batch):
       - dict with ['logits']
       - tuple/list where logits is the first element
     """
+    # breakpoint()
     outputs = model(batch)
 
     # dict-style
@@ -224,9 +225,13 @@ def main():
                 eval_mode=True
             )
     elif 'deepseek' in args.model.lower():
-        from deepseek_moe_16b_chat.modeling_deepseek import DeepseekForCausalLM
-        model = DeepseekForCausalLM.from_pretrained(args.model,torch_dtype=torch.float16,
-                                                    attn_implementation = "eager",device_map='cuda',trust_remote_code=True)
+        model = transformers.AutoModelForCausalLM.from_pretrained(
+            args.model,
+            torch_dtype=torch.float16,
+            attn_implementation="eager",
+            device_map='auto',
+            trust_remote_code=True
+        )
         model.seqlen = 2048
         test_loader = data_utils.get_loaders(
                 args.eval_dataset,
@@ -304,7 +309,8 @@ def main():
                             break
                 trainloader = torch.utils.data.DataLoader(dataset, batch_size=1,shuffle=True) 
             else:
-                if 'deepseek' in args.model or 'mixtral' in args.model or 'qwen' in args.model:
+                model_name = args.model.lower()
+                if 'deepseek' in model_name or 'mixtral' in model_name or 'qwen' in model_name:
                     trainloader = data_utils.get_loaders(
                         args.cal_dataset, nsamples=args.nsamples,
                         seed=args.seed, model=args.model,
@@ -355,14 +361,14 @@ def main():
         ]
         
         # 合并所有任务
-        all_task_names = mmlu_tasks + other_tasks
-        # all_task_names = mmlu_tasks
+        # all_task_names = mmlu_tasks + other_tasks
+        all_task_names = other_tasks
         tasks_str = ",".join(all_task_names)
 
         print(f"Evaluating on {len(all_task_names)} tasks via lm_eval...")
         
         # 2. 运行评测
-        results = eval_lm(model, tokenizer, tasks_str, num_fewshot=0, batch_size=8)
+        results = eval_lm(model, tokenizer, tasks_str, num_fewshot=0, batch_size=32)
         
         # 3. 打印详细结果
         # print("Detailed Results:")
