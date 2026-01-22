@@ -66,3 +66,6 @@ Arguments:
 ---> Loading /dataset/common/pretrain_model/Qwen1.5-MoE-A2.7B Model (class: Qwen2MoeForCausalLM) with seq_len: 2048
 ---> Using model-level rotary_emb for quantization
 -----GPTQ Quantization-----
+GPU memory (from gptq_fwrd): 27.30 -> 27.30 GB (0.00 GB)
+-----GPTQ Quantization Done-----
+

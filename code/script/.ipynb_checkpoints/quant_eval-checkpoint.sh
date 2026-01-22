@@ -19,7 +19,7 @@ model_name='Qwen1.5-MoE-A2.7B'
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
 # 定义使用的 GPU 编号（用空格隔开）
-GPUS=(6) 
+GPUS=(3) 
 # 将数组转换为逗号分隔的字符串，用于 CUDA_VISIBLE_DEVICES (即 "0,1")
 GPU_STR=$(IFS=,; echo "${GPUS[*]}")
 # 设置环境变量
@@ -81,7 +81,7 @@ python fake_quant/main.py \
     --EBSS_calib \
     --calib_path "$CALIB_DATA" \
     --AGQ_GPTQ \
-    #>> "$LOG_FILE" 2>&1
+    >> "$LOG_FILE" 2>&1
 
 # 检查结果
 if [ $? -eq 0 ]; then

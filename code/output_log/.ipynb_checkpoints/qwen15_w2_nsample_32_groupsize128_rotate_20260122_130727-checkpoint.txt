@@ -1,3 +1,18 @@
+==================== 任务启动信息 ====================
+启动时间: 2026-01-22 13:07:27
+当前目录: /export/home2/zihan/MoEQuant/code
+模型名称: Qwen1.5-MoE-A2.7B
+权重位数 (W_BITS): 2
+样本数量 (N_SAMPLES): 32
+显卡设置: CUDA_VISIBLE_DEVICES=2
+保存路径: /dataset/common/quant_model/moequant_qwen15_w2_selfebss_nsample_32_groupsize128_rotate.pth
+校准数据: ./EBSS_data/ebss_qwen15_selfbuild_merged.jsonl
+完整执行命令:
+python fake_quant/main.py --model /dataset/common/pretrain_model/Qwen1.5-MoE-A2.7B --w_bits 2 --nsamples 32 --save_qmodel_path /dataset/common/quant_model/moequant_qwen15_w2_selfebss_nsample_32_groupsize128_rotate.pth --EBSS_calib --AGQ_GPTQ
+======================================================
+
+
+
 Arguments: 
 {'AGQ_GPTQ': True,
  'EBSS_calib': True,
@@ -34,12 +49,12 @@ Arguments:
  'percdamp': 0.01,
  'pre_eval': False,
  'quant_test': True,
- 'rotate': False,
+ 'rotate': True,
  'rotate_mode': 'hadamard',
  'rotation_seed': -1,
- 'save_name': '20260121_222652',
+ 'save_name': '20260122_130741',
  'save_path': '/export/home2/zihan/MoEQuant/code/log',
- 'save_qmodel_path': '/dataset/common/quant_model/moequant_qwen15_w2_selfebss_nsample_32_groupsize128.pth',
+ 'save_qmodel_path': '/dataset/common/quant_model/moequant_qwen15_w2_selfebss_nsample_32_groupsize128_rotate.pth',
  'seed': 0,
  'shared_expert_act_calib': False,
  'static_test': False,
@@ -63,9 +78,6 @@ Arguments:
  'wandb_project': None}
 ------------------------------------------------------------
 ---> Loading model with device_map=auto for multi-GPU support...
----> Loading /dataset/common/pretrain_model/Qwen1.5-MoE-A2.7B Model (class: Qwen2MoeForCausalLM) with seq_len: 2048
----> Using model-level rotary_emb for quantization
------GPTQ Quantization-----
-GPU memory (from gptq_fwrd): 27.30 -> 27.30 GB (0.00 GB)
------GPTQ Quantization Done-----
-
+`torch_dtype` is deprecated! Use `dtype` instead!
+We will use 90% of the memory on device 0 for storing the model, and 10% for the buffer to avoid OOM. You can set `max_memory` in to a higher value to use more memory (at your own risk).
+Loading checkpoint shards:   0%|          | 0/8 [00:00<?, ?it/s]Loading checkpoint shards:  12%|█▎        | 1/8 [00:07<00:54,  7.85s/it]Loading checkpoint shards:  25%|██▌       | 2/8 [00:27<01:29, 14.84s/it]

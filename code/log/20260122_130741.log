@@ -34,12 +34,12 @@ Arguments:
  'percdamp': 0.01,
  'pre_eval': False,
  'quant_test': True,
- 'rotate': False,
+ 'rotate': True,
  'rotate_mode': 'hadamard',
  'rotation_seed': -1,
- 'save_name': '20260121_222652',
+ 'save_name': '20260122_130741',
  'save_path': '/export/home2/zihan/MoEQuant/code/log',
- 'save_qmodel_path': '/dataset/common/quant_model/moequant_qwen15_w2_selfebss_nsample_32_groupsize128.pth',
+ 'save_qmodel_path': '/dataset/common/quant_model/moequant_qwen15_w2_selfebss_nsample_32_groupsize128_rotate.pth',
  'seed': 0,
  'shared_expert_act_calib': False,
  'static_test': False,
@@ -63,9 +63,12 @@ Arguments:
  'wandb_project': None}
 ------------------------------------------------------------
 ---> Loading model with device_map=auto for multi-GPU support...
+We will use 90% of the memory on device 0 for storing the model, and 10% for the buffer to avoid OOM. You can set `max_memory` in to a higher value to use more memory (at your own risk).
 ---> Loading /dataset/common/pretrain_model/Qwen1.5-MoE-A2.7B Model (class: Qwen2MoeForCausalLM) with seq_len: 2048
 ---> Using model-level rotary_emb for quantization
+GPU memory (from rotate_model): 34.25 -> 27.29 GB (-6.96 GB)
+GPU memory (from main): 27.29 -> 27.27 GB (-0.02 GB)
 -----GPTQ Quantization-----
-GPU memory (from gptq_fwrd): 27.30 -> 27.30 GB (0.00 GB)
+GPU memory (from gptq_fwrd): 27.58 -> 27.58 GB (0.00 GB)
 -----GPTQ Quantization Done-----
 

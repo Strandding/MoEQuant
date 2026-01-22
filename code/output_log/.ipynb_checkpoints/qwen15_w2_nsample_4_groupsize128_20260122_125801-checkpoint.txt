@@ -1,0 +1,15 @@
+==================== 任务启动信息 ====================
+启动时间: 2026-01-22 12:58:01
+当前目录: /export/home2/zihan/MoEQuant/code
+模型名称: Qwen1.5-MoE-A2.7B
+权重位数 (W_BITS): 2
+样本数量 (N_SAMPLES): 4
+显卡设置: CUDA_VISIBLE_DEVICES=2
+保存路径: /dataset/common/quant_model/moequant_qwen15_w2_selfebss_nsample_4_groupsize128.pth
+校准数据: ./EBSS_data/ebss_qwen15_selfbuild_merged.jsonl
+完整执行命令:
+python fake_quant/main.py --model /dataset/common/pretrain_model/Qwen1.5-MoE-A2.7B --w_bits 2 --nsamples 4 --save_qmodel_path /dataset/common/quant_model/moequant_qwen15_w2_selfebss_nsample_4_groupsize128.pth --EBSS_calib --AGQ_GPTQ
+======================================================
+
+
+

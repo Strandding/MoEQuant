@@ -46,7 +46,7 @@ class GPTQ:
         if len(inp.shape) == 2:
             inp = inp.unsqueeze(0)
         tmp = inp.shape[0]
-        # tmp = (s**2).sum() #/ inp.shape[1] 
+        # tmp = (s**2).sum() #/ inp.shape[1]
         if len(inp.shape) == 3:
             inp = inp.reshape((-1, inp.shape[-1]))
         inp = inp.t()
@@ -384,7 +384,7 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
                 # 如果名字里不包含 'experts' (普通专家) 且不包含 'shared_expert' (共享专家)
                 # 则跳过，不进行量化。
                 # -----------------------------------------------------------
-                if 'experts' not in name or 'shared_experts' in name:
+                if 'experts' not in name or 'shared' in name:
                     # print(f'(Skipping {name})', end='  ', flush=True)
                     continue
                 

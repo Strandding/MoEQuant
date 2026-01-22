@@ -67,3 +67,8 @@ We will use 90% of the memory on device 0 for storing the model, and 10% for the
 ---> Loading /dataset/common/pretrain_model/Qwen3-30B-A3B-Base Model (class: Qwen3MoeForCausalLM) with seq_len: 2048
 ---> Using model-level rotary_emb for quantization
 -----GPTQ Quantization-----
+GPU memory (from gptq_fwrd): 57.65 -> 57.65 GB (0.00 GB)
+-----GPTQ Quantization Done-----
+
+WARNING: Using the latest cached version of the dataset since winogrande couldn't be found on the Hugging Face Hub
+WARNING: Found the latest cached dataset configuration 'winogrande_xl' at /export/home2/zihan/.cache/huggingface/datasets/winogrande/winogrande_xl/0.0.0/01e74176c63542e6b0bcb004dcdea22d94fb67b5 (last modified on Thu Jan 15 16:56:13 2026).
