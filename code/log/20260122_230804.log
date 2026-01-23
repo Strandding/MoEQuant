@@ -9,7 +9,7 @@ Arguments:
  'act_order': False,
  'bsz': 1,
  'cal_dataset': 'wikitext2',
- 'calib_path': './EBSS_data/ebss_qwen15_selfbuild_merged.jsonl',
+ 'calib_path': './EBSS_data/ebss_qwen3moe_selfbuild_merged.jsonl',
  'capture_layer_io': False,
  'distribute': False,
  'do_smooth': False,
@@ -17,7 +17,7 @@ Arguments:
  'fp32_had': True,
  'fully_quant': False,
  'hf_token': None,
- 'human_res': './res_moe_qwen15_base_w3_selfebss_nsample_32',
+ 'human_res': './res_moe_qwen3moe_base_w3_selfebss_nsample_128',
  'int8_down_proj': False,
  'k_asym': False,
  'k_bits': 16,
@@ -28,18 +28,18 @@ Arguments:
  'lm_eval': False,
  'lm_eval_batch_size': 128,
  'load_qmodel_path': None,
- 'model': '/dataset/common/pretrain_model/Qwen1.5-MoE-A2.7B',
- 'nsamples': 32,
+ 'model': '/dataset/common/pretrain_model/Qwen3-30B-A3B-Base',
+ 'nsamples': 128,
  'online_hadamard': False,
  'percdamp': 0.01,
  'pre_eval': False,
  'quant_test': True,
- 'rotate': False,
+ 'rotate': True,
  'rotate_mode': 'hadamard',
  'rotation_seed': -1,
- 'save_name': '20260122_171531',
+ 'save_name': '20260122_230804',
  'save_path': '/export/home2/zihan/MoEQuant/code/log',
- 'save_qmodel_path': '/dataset/common/quant_model/moequant_qwen15_w3_selfebss_nsample_32_groupsize128.pth',
+ 'save_qmodel_path': '/dataset/common/quant_model/moequant_qwen3moe_w3_selfebss_nsample_128_groupsize128_rotate.pth',
  'seed': 0,
  'shared_expert_act_calib': False,
  'static_test': False,
@@ -64,9 +64,8 @@ Arguments:
 ------------------------------------------------------------
 ---> Loading model with device_map=auto for multi-GPU support...
 We will use 90% of the memory on device 0 for storing the model, and 10% for the buffer to avoid OOM. You can set `max_memory` in to a higher value to use more memory (at your own risk).
----> Loading /dataset/common/pretrain_model/Qwen1.5-MoE-A2.7B Model (class: Qwen2MoeForCausalLM) with seq_len: 2048
+---> Loading /dataset/common/pretrain_model/Qwen3-30B-A3B-Base Model (class: Qwen3MoeForCausalLM) with seq_len: 2048
 ---> Using model-level rotary_emb for quantization
+GPU memory (from rotate_model): 64.43 -> 57.47 GB (-6.96 GB)
+GPU memory (from main): 57.47 -> 57.47 GB (0.00 GB)
 -----GPTQ Quantization-----
-GPU memory (from gptq_fwrd): 27.60 -> 27.60 GB (0.00 GB)
------GPTQ Quantization Done-----
-

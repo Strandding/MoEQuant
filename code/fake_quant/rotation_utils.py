@@ -5,6 +5,7 @@ import utils
 import transformers
 import tqdm, math
 import quant_utils
+import logging
 from hadamard_utils import random_hadamard_matrix, apply_exact_had_to_linear, is_pow2
 from fast_hadamard_transform import hadamard_transform
 from deepseek_moe_16b_chat.modeling_deepseek import DeepseekMLP,DeepseekMoE
@@ -50,12 +51,32 @@ def rotate_embeddings(model, Q: torch.Tensor) -> None:
         W.weight.data = torch.matmul(W_, Q.to(W.weight.device)).to( dtype=dtype)
 
     
+_warned_attn_input_rotation = set()
+
 def rotate_attention_inputs(layer, Q, model_type) -> None:
     # Rotate the WQ, WK and WV matrices of the self-attention layer.
-    for W in [layer.self_attn.q_proj, layer.self_attn.k_proj, layer.self_attn.v_proj]:
+    self_attn = layer.self_attn
+    # Check for standard q_proj/k_proj/v_proj layout
+    if all(hasattr(self_attn, name) for name in ("q_proj", "k_proj", "v_proj")):
+        attn_weights = [self_attn.q_proj, self_attn.k_proj, self_attn.v_proj]
+    elif hasattr(self_attn, "qkv_proj"):
+        attn_weights = [self_attn.qkv_proj]
+    elif hasattr(self_attn, "q_proj") and hasattr(self_attn, "kv_proj"):
+        # DeepSeek-V2 style: q_proj + kv_proj (MLA)
+        attn_weights = [self_attn.q_proj, self_attn.kv_proj]
+    else:
+        # Skip rotation for unsupported attention layouts (e.g., DeepSeek-V2 MLA)
+        attn_type = type(self_attn).__name__
+        if attn_type not in _warned_attn_input_rotation:
+            _warned_attn_input_rotation.add(attn_type)
+            logging.warning(
+                "Skipping attention input rotation for %s: unsupported proj layout.",
+                attn_type,
+            )
+        return
+
+    for W in attn_weights:
         dtype = W.weight.dtype
-        # W_ = W.weight.to(device=utils.DEV, dtype=torch.float64)
-        # W.weight.data = torch.matmul(W_, Q).to(device="cpu", dtype=dtype)
         W_ = W.weight.data.to(dtype=torch.float64)
         W.weight.data = torch.matmul(W_, Q.to(W.weight.device)).to(dtype=dtype)
 
@@ -210,8 +231,21 @@ def rotate_head(model, Q: torch.Tensor) -> None:
     W_ = W.weight.data.to(dtype=torch.float64)
     W.weight.data = torch.matmul(W_, Q.to(W.weight.device)).to(dtype=dtype)
 
+_warned_ov_proj_rotation = set()
+
 def rotate_ov_proj(layer, model_type, head_num, head_dim):
-    v_proj = layer.self_attn.v_proj
+    self_attn = layer.self_attn
+    # Skip if v_proj doesn't exist (e.g., DeepSeek-V2 MLA architecture)
+    if not hasattr(self_attn, 'v_proj'):
+        attn_type = type(self_attn).__name__
+        if attn_type not in _warned_ov_proj_rotation:
+            _warned_ov_proj_rotation.add(attn_type)
+            logging.warning(
+                "Skipping OV projection rotation for %s: no v_proj found.",
+                attn_type,
+            )
+        return
+    v_proj = self_attn.v_proj
     if model_type == model_utils.LLAMA_MODEL:
         o_proj = layer.self_attn.o_proj
     elif model_type == model_utils.OPT_MODEL:
@@ -353,14 +387,30 @@ def fuse_layer_norms(model):
         if hasattr(input_norm, 'weight'):
             with torch.no_grad():
                 scale = input_norm.weight.data.double()
-                attn_inputs = [layer.self_attn.q_proj, layer.self_attn.k_proj, layer.self_attn.v_proj]
-                for mod in attn_inputs:
-                    mod.weight.data = (mod.weight.data.double() * scale.unsqueeze(0)).to(mod.weight.dtype)
-                    if hasattr(input_norm, 'bias') and input_norm.bias is not None and mod.bias is not None:
-                        mod.bias.data = (mod.bias.data.double() + torch.matmul(mod.weight.data.double(), input_norm.bias.data.double())).to(mod.bias.dtype)
-                input_norm.weight.data.fill_(1.0)
-                if hasattr(input_norm, 'bias') and input_norm.bias is not None:
-                    input_norm.bias.data.fill_(0.0)
+                attn_inputs = []
+                self_attn = layer.self_attn
+                if all(hasattr(self_attn, name) for name in ("q_proj", "k_proj", "v_proj")):
+                    attn_inputs = [self_attn.q_proj, self_attn.k_proj, self_attn.v_proj]
+                elif hasattr(self_attn, "qkv_proj"):
+                    attn_inputs = [self_attn.qkv_proj]
+                elif hasattr(self_attn, "q_proj") and hasattr(self_attn, "kv_proj"):
+                    attn_inputs = [self_attn.q_proj, self_attn.kv_proj]
+                elif all(hasattr(self_attn, name) for name in ("wq", "wk", "wv")):
+                    attn_inputs = [self_attn.wq, self_attn.wk, self_attn.wv]
+
+                if not attn_inputs:
+                    logging.warning(
+                        "Skipping attention norm fusion for %s: unsupported proj layout.",
+                        type(self_attn).__name__,
+                    )
+                else:
+                    for mod in attn_inputs:
+                        mod.weight.data = (mod.weight.data.double() * scale.unsqueeze(0)).to(mod.weight.dtype)
+                        if hasattr(input_norm, 'bias') and input_norm.bias is not None and mod.bias is not None:
+                            mod.bias.data = (mod.bias.data.double() + torch.matmul(mod.weight.data.double(), input_norm.bias.data.double())).to(mod.bias.dtype)
+                    input_norm.weight.data.fill_(1.0)
+                    if hasattr(input_norm, 'bias') and input_norm.bias is not None:
+                        input_norm.bias.data.fill_(0.0)
 
         if hasattr(post_norm, 'weight'):
             with torch.no_grad():

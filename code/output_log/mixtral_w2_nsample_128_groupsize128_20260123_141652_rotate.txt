@@ -1,0 +1,106 @@
+==================== 任务启动信息 ====================
+启动时间: 2026-01-23 14:16:52
+当前目录: /export/home2/zihan/MoEQuant/code
+模型名称: Mixtral-8x7B-v0.1
+权重位数 (W_BITS): 2
+样本数量 (N_SAMPLES): 128
+显卡设置: CUDA_VISIBLE_DEVICES=5,7
+保存路径: /dataset/common/quant_model/moequant_mixtral_w2_selfebss_nsample_128_groupsize128_rotate.pth
+校准数据: ./EBSS_data/ebss_mixtral_selfbuild_merged.jsonl
+完整执行命令:
+python fake_quant/main.py --model /dataset/common/pretrain_model/Mixtral-8x7B-v0.1 --w_bits 2 --nsamples 128 --save_qmodel_path /dataset/common/quant_model/moequant_mixtral_w2_selfebss_nsample_128_groupsize128_rotate.pth --EBSS_calib --AGQ_GPTQ
+======================================================
+
+
+
+Arguments: 
+{'AGQ_GPTQ': True,
+ 'EBSS_calib': True,
+ 'a_asym': False,
+ 'a_bits': 16,
+ 'a_clip_ratio': 1.0,
+ 'a_dynamic_method': 'pertensor',
+ 'a_groupsize': 128,
+ 'act_order': False,
+ 'bsz': 1,
+ 'cal_dataset': 'wikitext2',
+ 'calib_path': './EBSS_data/ebss_mixtral_selfbuild_merged.jsonl',
+ 'capture_layer_io': False,
+ 'distribute': False,
+ 'do_smooth': False,
+ 'eval_dataset': 'wikitext2',
+ 'fp32_had': True,
+ 'fully_quant': False,
+ 'hf_token': None,
+ 'human_res': './res_moe_mixtral_base_w2_selfebss_nsample_128',
+ 'int8_down_proj': False,
+ 'k_asym': False,
+ 'k_bits': 16,
+ 'k_clip_ratio': 1.0,
+ 'k_groupsize': -1,
+ 'k_pre_rope': False,
+ 'layer_idx': 10,
+ 'lm_eval': False,
+ 'lm_eval_batch_size': 128,
+ 'load_qmodel_path': None,
+ 'model': '/dataset/common/pretrain_model/Mixtral-8x7B-v0.1',
+ 'nsamples': 128,
+ 'online_hadamard': False,
+ 'percdamp': 0.01,
+ 'pre_eval': False,
+ 'quant_test': True,
+ 'rotate': True,
+ 'rotate_mode': 'hadamard',
+ 'rotation_seed': -1,
+ 'save_name': '20260123_141714',
+ 'save_path': '/export/home2/zihan/MoEQuant/code/log',
+ 'save_qmodel_path': '/dataset/common/quant_model/moequant_mixtral_w2_selfebss_nsample_128_groupsize128_rotate.pth',
+ 'seed': 0,
+ 'shared_expert_act_calib': False,
+ 'static_test': False,
+ 'tasks': ['piqa',
+           'hellaswag',
+           'arc_easy',
+           'arc_challenge',
+           'winogrande',
+           'lambada'],
+ 'v_asym': False,
+ 'v_bits': 16,
+ 'v_clip_ratio': 1.0,
+ 'v_groupsize': -1,
+ 'w_asym': False,
+ 'w_bits': 2,
+ 'w_clip': True,
+ 'w_groupsize': 128,
+ 'w_rtn': False,
+ 'wandb': False,
+ 'wandb_id': None,
+ 'wandb_project': None}
+------------------------------------------------------------
+`torch_dtype` is deprecated! Use `dtype` instead!
+MixtralForCausalLM has generative capabilities, as `prepare_inputs_for_generation` is explicitly defined. However, it doesn't directly inherit from `GenerationMixin`. From 👉v4.50👈 onwards, `PreTrainedModel` will NOT inherit from `GenerationMixin`, and this model will lose the ability to call `generate` and other related functions.
+  - If you're using `trust_remote_code=True`, you can get rid of this warning by loading the model with an auto class. See https://huggingface.co/docs/transformers/en/model_doc/auto#auto-classes
+  - If you are the owner of the model architecture code, please modify your model class such that it inherits from `GenerationMixin` (after `PreTrainedModel`, otherwise you'll get an exception).
+  - If you are not the owner of the model architecture class, please contact the model code owner to update it.
+Loading checkpoint shards:   0%|          | 0/19 [00:00<?, ?it/s]Loading checkpoint shards:   5%|▌         | 1/19 [00:02<00:39,  2.22s/it]Loading checkpoint shards:  11%|█         | 2/19 [00:04<00:36,  2.17s/it]Loading checkpoint shards:  16%|█▌        | 3/19 [00:06<00:35,  2.20s/it]Loading checkpoint shards:  21%|██        | 4/19 [00:08<00:30,  2.03s/it]Loading checkpoint shards:  26%|██▋       | 5/19 [00:10<00:27,  1.93s/it]Loading checkpoint shards:  32%|███▏      | 6/19 [00:11<00:24,  1.88s/it]Loading checkpoint shards:  37%|███▋      | 7/19 [00:13<00:22,  1.88s/it]Loading checkpoint shards:  42%|████▏     | 8/19 [00:15<00:20,  1.89s/it]Loading checkpoint shards:  47%|████▋     | 9/19 [00:17<00:19,  1.93s/it]Loading checkpoint shards:  53%|█████▎    | 10/19 [00:19<00:17,  1.89s/it]Loading checkpoint shards:  58%|█████▊    | 11/19 [00:21<00:14,  1.84s/it]Loading checkpoint shards:  63%|██████▎   | 12/19 [00:23<00:12,  1.85s/it]Loading checkpoint shards:  68%|██████▊   | 13/19 [00:24<00:10,  1.80s/it]Loading checkpoint shards:  74%|███████▎  | 14/19 [00:26<00:08,  1.78s/it]Loading checkpoint shards:  79%|███████▉  | 15/19 [00:28<00:07,  1.79s/it]Loading checkpoint shards:  84%|████████▍ | 16/19 [00:30<00:05,  1.87s/it]Loading checkpoint shards:  89%|████████▉ | 17/19 [00:32<00:03,  1.89s/it]Loading checkpoint shards:  95%|█████████▍| 18/19 [00:34<00:01,  1.89s/it]Loading checkpoint shards: 100%|██████████| 19/19 [00:36<00:00,  1.90s/it]Loading checkpoint shards: 100%|██████████| 19/19 [00:36<00:00,  1.90s/it]
+MixtralForCausalLM has generative capabilities, as `prepare_inputs_for_generation` is explicitly defined. However, it doesn't directly inherit from `GenerationMixin`. From 👉v4.50👈 onwards, `PreTrainedModel` will NOT inherit from `GenerationMixin`, and this model will lose the ability to call `generate` and other related functions.
+  - If you're using `trust_remote_code=True`, you can get rid of this warning by loading the model with an auto class. See https://huggingface.co/docs/transformers/en/model_doc/auto#auto-classes
+  - If you are the owner of the model architecture code, please modify your model class such that it inherits from `GenerationMixin` (after `PreTrainedModel`, otherwise you'll get an exception).
+  - If you are not the owner of the model architecture class, please contact the model code owner to update it.
+MixtralForCausalLM has generative capabilities, as `prepare_inputs_for_generation` is explicitly defined. However, it doesn't directly inherit from `GenerationMixin`. From 👉v4.50👈 onwards, `PreTrainedModel` will NOT inherit from `GenerationMixin`, and this model will lose the ability to call `generate` and other related functions.
+  - If you're using `trust_remote_code=True`, you can get rid of this warning by loading the model with an auto class. See https://huggingface.co/docs/transformers/en/model_doc/auto#auto-classes
+  - If you are the owner of the model architecture code, please modify your model class such that it inherits from `GenerationMixin` (after `PreTrainedModel`, otherwise you'll get an exception).
+  - If you are not the owner of the model architecture class, please contact the model code owner to update it.
+正在使用fuse_layer_norms
+Fusing Layer Norms:   0%|          | 0/32 [00:00<?, ?layer/s]Fusing Layer Norms: 100%|██████████| 32/32 [00:00<00:00, 724.94layer/s]
+GPU memory (from rotate_model): 93.63 -> 89.15 GB (-4.48 GB)
+Rotating:   0%|          | 0/32 [00:00<?, ?layer/s]Rotating:   3%|▎         | 1/32 [00:00<00:13,  2.28layer/s]Rotating:  41%|████      | 13/32 [00:01<00:01, 14.61layer/s]Rotating:  47%|████▋     | 15/32 [00:02<00:02,  5.76layer/s]Rotating:  50%|█████     | 16/32 [00:02<00:03,  4.39layer/s]Rotating:  53%|█████▎    | 17/32 [00:11<00:22,  1.47s/layer]Rotating:  81%|████████▏ | 26/32 [00:12<00:03,  1.82layer/s]Rotating:  88%|████████▊ | 28/32 [00:13<00:02,  1.77layer/s]Rotating:  91%|█████████ | 29/32 [00:14<00:01,  1.74layer/s]Rotating:  94%|█████████▍| 30/32 [00:14<00:01,  1.70layer/s]Rotating:  97%|█████████▋| 31/32 [00:15<00:00,  1.67layer/s]Rotating: 100%|██████████| 32/32 [00:16<00:00,  1.64layer/s]Rotating: 100%|██████████| 32/32 [00:16<00:00,  1.97layer/s]
+GPU memory (from main): 90.58 -> 89.16 GB (-1.42 GB)
+calib_seqlen: 2048
+Traceback (most recent call last):
+  File "/export/home2/zihan/MoEQuant/code/fake_quant/main.py", line 407, in <module>
+    main()
+  File "/export/home2/zihan/MoEQuant/code/fake_quant/main.py", line 306, in main
+    with open(args.calib_path, encoding='utf-8') as file:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: './EBSS_data/ebss_mixtral_selfbuild_merged.jsonl'

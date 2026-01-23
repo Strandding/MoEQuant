@@ -379,8 +379,6 @@ class QuantDecoderLayer(nn.Module):
         # print(f"yes_decoder ")
         if isinstance(hidden_states, tuple):
             hidden_states = hidden_states[0]
-        if (hidden_states.max() < 1e-6).item():
-            breakpoint()
         if "padding_mask" in kwargs:
             warnings.warn(
                 "Passing `padding_mask` is deprecated and will be removed in v4.37. "

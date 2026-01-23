@@ -298,6 +298,8 @@ def main():
             
         elif not args.w_rtn: # GPTQ Weight Quantization
             # assert "llama" in args.model, "Only llama is supported for GPTQ!"
+            calib_seqlen = 2048
+            print("calib_seqlen:", calib_seqlen)
             if args.EBSS_calib:
                 dataset = []
                 cnt = 0
@@ -314,14 +316,19 @@ def main():
                     trainloader = data_utils.get_loaders(
                         args.cal_dataset, nsamples=args.nsamples,
                         seed=args.seed, model=args.model,
-                        seqlen=2048, eval_mode=False
+                        seqlen=calib_seqlen, eval_mode=False
                     )
             # load bit settings
             bit_settings = None
-            if args.AGQ_GPTQ:
-                quantizers = gptq_utils_moe.gptq_fwrd(model, tokenizer, trainloader, utils.DEV, args, bit_settings)
-            else:
-                quantizers = gptq_utils.gptq_fwrd(model, tokenizer, trainloader, utils.DEV, args, bit_settings)
+            old_seqlen = model.seqlen
+            model.seqlen = calib_seqlen
+            try:
+                if args.AGQ_GPTQ:
+                    quantizers = gptq_utils_moe.gptq_fwrd(model, tokenizer, trainloader, utils.DEV, args, bit_settings)
+                else:
+                    quantizers = gptq_utils.gptq_fwrd(model, tokenizer, trainloader, utils.DEV, args, bit_settings)
+            finally:
+                model.seqlen = old_seqlen
             save_dict["w_quantizers"] = quantizers
         else: # RTN Weight Quantization
             bit_settings=None

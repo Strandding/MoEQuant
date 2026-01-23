@@ -453,6 +453,16 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
                     gptq[name].add_batch_shared_score(routing_scores_shared,inp[0].data, out.data)
                 return tmp
             handles = []
+            # For DeepSeek-V2, we need to manually set cur_sample on Linear layers
+            # since DeepSeekV2DecoderLayer.forward doesn't propagate this parameter
+            def set_cur_sample_on_experts(layer_module, sample_idx):
+                """Set cur_sample attribute on all expert Linear layers."""
+                if hasattr(layer_module, 'mlp') and hasattr(layer_module.mlp, 'experts'):
+                    for expert in layer_module.mlp.experts:
+                        for submodule in expert.modules():
+                            if isinstance(submodule, nn.Linear):
+                                submodule.cur_sample = sample_idx
+
             if 'deepseek' in args.model.lower():
                 for name in subset:
                     if name not in gptq:
@@ -479,9 +489,12 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
                         handles.append(subset[name].register_forward_hook(add_batch_shared_score(name,routing_scores_shared)))
                     else:
                         handles.append(subset[name].register_forward_hook(add_batch_qwen(name)))
-            # all sample 
+            # all sample
             # layer.mlp.static_observer=True
             for jjj in range(args.nsamples):
+                # For DeepSeek-V2, manually set cur_sample on expert Linear layers
+                if 'deepseek' in args.model.lower():
+                    set_cur_sample_on_experts(layer, jjj)
                 outs[jjj] = _unpack_layer_output(layer(
                     inps[jjj].unsqueeze(0),
                     attention_mask=attention_mask_dev,

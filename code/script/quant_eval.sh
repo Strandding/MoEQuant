@@ -12,14 +12,14 @@ model_map["DeepSeek-V2-Lite"]="dsv2"
 
 # ================= 配置区域 =================
 W_BITS=3
-N_SAMPLES=32
+N_SAMPLES=128
 gsize=128 # 不分组则-1
 # 你在这里修改长名字
-model_name='Qwen1.5-MoE-A2.7B' 
+model_name='Qwen1.5-MoE-A2.7B'
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
 # 定义使用的 GPU 编号（用空格隔开）
-GPUS=(6) 
+GPUS=(6)
 # 将数组转换为逗号分隔的字符串，用于 CUDA_VISIBLE_DEVICES (即 "0,1")
 GPU_STR=$(IFS=,; echo "${GPUS[*]}")
 # 设置环境变量
@@ -37,9 +37,9 @@ fi
 
 # 路径配置（现在全部使用变量，更加自动化）
 MODEL_PATH="/dataset/common/pretrain_model/${model_name}"
-SAVE_PATH="/dataset/common/quant_model/moequant_${short_name}_w${W_BITS}_selfebss_nsample_${N_SAMPLES}_groupsize${gsize}.pth"
+SAVE_PATH="/dataset/common/quant_model/moequant_${short_name}_w${W_BITS}_selfebss_nsample_${N_SAMPLES}_groupsize${gsize}_rotate.pth"
 RES_DIR="./res_moe_${short_name}_base_w${W_BITS}_selfebss_nsample_${N_SAMPLES}"
-LOG_FILE="./output_log/${short_name}_w${W_BITS}_nsample_${N_SAMPLES}_groupsize${gsize}_${TIMESTAMP}.txt"
+LOG_FILE="./output_log/${short_name}_w${W_BITS}_nsample_${N_SAMPLES}_groupsize${gsize}_${TIMESTAMP}_rotate.txt"
 CALIB_DATA="./EBSS_data/ebss_${short_name}_selfbuild_merged.jsonl"
 
 echo "模型: $model_name (缩写: $short_name)"
@@ -79,13 +79,15 @@ python fake_quant/main.py \
     --nsamples "$N_SAMPLES" \
     --human_res "$RES_DIR" \
     --EBSS_calib \
+    --rotate \
     --calib_path "$CALIB_DATA" \
     --AGQ_GPTQ \
-    #>> "$LOG_FILE" 2>&1
+    >> "$LOG_FILE" 2>&1
 
 # 检查结果
 if [ $? -eq 0 ]; then
     echo "第一阶段完成，正在执行 run.py..."
+    #python run.py ${GPUS[0]} ${GPUS[1]}
     python run.py ${GPUS[0]}
 else
     echo "错误：量化脚本执行失败，请检查日志: $LOG_FILE"

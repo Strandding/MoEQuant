@@ -1,0 +1,34 @@
+==================== 任务启动信息 ====================
+启动时间: 2026-01-22 23:05:34
+当前目录: /export/home2/zihan/MoEQuant/code
+模型名称: Qwen3-30B-A3B-Base
+权重位数 (W_BITS): 2
+样本数量 (N_SAMPLES): 128
+显卡设置: CUDA_VISIBLE_DEVICES=1
+保存路径: /dataset/common/quant_model/moequant_qwen3moe_w2_selfebss_nsample_128_groupsize128_rotate.pth
+校准数据: ./EBSS_data/ebss_qwen3moe_selfbuild_merged.jsonl
+完整执行命令:
+python fake_quant/main.py --model /dataset/common/pretrain_model/Qwen3-30B-A3B-Base --w_bits 2 --nsamples 128 --save_qmodel_path /dataset/common/quant_model/moequant_qwen3moe_w2_selfebss_nsample_128_groupsize128_rotate.pth --EBSS_calib --AGQ_GPTQ
+======================================================
+
+
+
+Traceback (most recent call last):
+  File "/export/home2/zihan/MoEQuant/code/fake_quant/main.py", line 4, in <module>
+    import model_utils
+  File "/export/home2/zihan/MoEQuant/code/fake_quant/model_utils.py", line 3, in <module>
+    import transformers
+  File "/export/home2/zihan/miniconda3/envs/moe/lib/python3.11/site-packages/transformers/__init__.py", line 958, in <module>
+    import_structure = define_import_structure(Path(__file__).parent / "models", prefix="models")
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/export/home2/zihan/miniconda3/envs/moe/lib/python3.11/site-packages/transformers/utils/import_utils.py", line 2867, in define_import_structure
+    import_structure = create_import_structure_from_path(module_path)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/export/home2/zihan/miniconda3/envs/moe/lib/python3.11/site-packages/transformers/utils/import_utils.py", line 2580, in create_import_structure_from_path
+    import_structure[f] = create_import_structure_from_path(os.path.join(module_path, f))
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/export/home2/zihan/miniconda3/envs/moe/lib/python3.11/site-packages/transformers/utils/import_utils.py", line 2604, in create_import_structure_from_path
+    with open(os.path.join(directory, module_name), encoding="utf-8") as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<frozen codecs>", line 309, in __init__
+KeyboardInterrupt

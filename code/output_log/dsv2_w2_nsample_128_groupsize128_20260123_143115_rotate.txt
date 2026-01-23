@@ -1,0 +1,132 @@
+==================== 任务启动信息 ====================
+启动时间: 2026-01-23 14:31:15
+当前目录: /export/home2/zihan/MoEQuant/code
+模型名称: DeepSeek-V2-Lite
+权重位数 (W_BITS): 2
+样本数量 (N_SAMPLES): 128
+显卡设置: CUDA_VISIBLE_DEVICES=2
+保存路径: /dataset/common/quant_model/moequant_dsv2_w2_selfebss_nsample_128_groupsize128_rotate.pth
+校准数据: ./EBSS_data/ebss_dsv2_selfbuild_merged.jsonl
+完整执行命令:
+python fake_quant/main.py --model /dataset/common/pretrain_model/DeepSeek-V2-Lite --w_bits 2 --nsamples 128 --save_qmodel_path /dataset/common/quant_model/moequant_dsv2_w2_selfebss_nsample_128_groupsize128_rotate.pth --EBSS_calib --AGQ_GPTQ
+======================================================
+
+
+
+Arguments: 
+{'AGQ_GPTQ': True,
+ 'EBSS_calib': True,
+ 'a_asym': False,
+ 'a_bits': 16,
+ 'a_clip_ratio': 1.0,
+ 'a_dynamic_method': 'pertensor',
+ 'a_groupsize': 128,
+ 'act_order': False,
+ 'bsz': 1,
+ 'cal_dataset': 'wikitext2',
+ 'calib_path': './EBSS_data/ebss_dsv2_selfbuild_merged.jsonl',
+ 'capture_layer_io': False,
+ 'distribute': False,
+ 'do_smooth': False,
+ 'eval_dataset': 'wikitext2',
+ 'fp32_had': True,
+ 'fully_quant': False,
+ 'hf_token': None,
+ 'human_res': './res_moe_dsv2_base_w2_selfebss_nsample_128',
+ 'int8_down_proj': False,
+ 'k_asym': False,
+ 'k_bits': 16,
+ 'k_clip_ratio': 1.0,
+ 'k_groupsize': -1,
+ 'k_pre_rope': False,
+ 'layer_idx': 10,
+ 'lm_eval': False,
+ 'lm_eval_batch_size': 128,
+ 'load_qmodel_path': None,
+ 'model': '/dataset/common/pretrain_model/DeepSeek-V2-Lite',
+ 'nsamples': 128,
+ 'online_hadamard': False,
+ 'percdamp': 0.01,
+ 'pre_eval': False,
+ 'quant_test': True,
+ 'rotate': True,
+ 'rotate_mode': 'hadamard',
+ 'rotation_seed': -1,
+ 'save_name': '20260123_143127',
+ 'save_path': '/export/home2/zihan/MoEQuant/code/log',
+ 'save_qmodel_path': '/dataset/common/quant_model/moequant_dsv2_w2_selfebss_nsample_128_groupsize128_rotate.pth',
+ 'seed': 0,
+ 'shared_expert_act_calib': False,
+ 'static_test': False,
+ 'tasks': ['piqa',
+           'hellaswag',
+           'arc_easy',
+           'arc_challenge',
+           'winogrande',
+           'lambada'],
+ 'v_asym': False,
+ 'v_bits': 16,
+ 'v_clip_ratio': 1.0,
+ 'v_groupsize': -1,
+ 'w_asym': False,
+ 'w_bits': 2,
+ 'w_clip': True,
+ 'w_groupsize': 128,
+ 'w_rtn': False,
+ 'wandb': False,
+ 'wandb_id': None,
+ 'wandb_project': None}
+------------------------------------------------------------
+`torch_dtype` is deprecated! Use `dtype` instead!
+We will use 90% of the memory on device 0 for storing the model, and 10% for the buffer to avoid OOM. You can set `max_memory` in to a higher value to use more memory (at your own risk).
+Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]Loading checkpoint shards:  25%|██▌       | 1/4 [00:02<00:07,  2.59s/it]Loading checkpoint shards:  50%|█████     | 2/4 [00:04<00:04,  2.31s/it]Loading checkpoint shards:  75%|███████▌  | 3/4 [00:07<00:02,  2.32s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:08<00:00,  1.97s/it]Loading checkpoint shards: 100%|██████████| 4/4 [00:08<00:00,  2.12s/it]
+Token indices sequence length is longer than the specified maximum sequence length for this model (311126 > 16384). Running this sequence through the model will result in indexing errors
+WARNING: DeepSeek norm class DeepseekV2RMSNorm is not DeepseekRMSNorm; continuing for V2 compatibility.
+正在使用fuse_layer_norms
+Fusing Layer Norms:   0%|          | 0/27 [00:00<?, ?layer/s]WARNING: Skipping attention norm fusion for DeepseekV2Attention: unsupported proj layout.
+WARNING: Skipping attention norm fusion for DeepseekV2Attention: unsupported proj layout.
+WARNING: Skipping attention norm fusion for DeepseekV2Attention: unsupported proj layout.
+WARNING: Skipping attention norm fusion for DeepseekV2Attention: unsupported proj layout.
+WARNING: Skipping attention norm fusion for DeepseekV2Attention: unsupported proj layout.
+WARNING: Skipping attention norm fusion for DeepseekV2Attention: unsupported proj layout.
+WARNING: Skipping attention norm fusion for DeepseekV2Attention: unsupported proj layout.
+WARNING: Skipping attention norm fusion for DeepseekV2Attention: unsupported proj layout.
+WARNING: Skipping attention norm fusion for DeepseekV2Attention: unsupported proj layout.
+WARNING: Skipping attention norm fusion for DeepseekV2Attention: unsupported proj layout.
+WARNING: Skipping attention norm fusion for DeepseekV2Attention: unsupported proj layout.
+WARNING: Skipping attention norm fusion for DeepseekV2Attention: unsupported proj layout.
+WARNING: Skipping attention norm fusion for DeepseekV2Attention: unsupported proj layout.
+Fusing Layer Norms:  48%|████▊     | 13/27 [00:00<00:00, 119.98layer/s]WARNING: Skipping attention norm fusion for DeepseekV2Attention: unsupported proj layout.
+WARNING: Skipping attention norm fusion for DeepseekV2Attention: unsupported proj layout.
+WARNING: Skipping attention norm fusion for DeepseekV2Attention: unsupported proj layout.
+WARNING: Skipping attention norm fusion for DeepseekV2Attention: unsupported proj layout.
+WARNING: Skipping attention norm fusion for DeepseekV2Attention: unsupported proj layout.
+WARNING: Skipping attention norm fusion for DeepseekV2Attention: unsupported proj layout.
+WARNING: Skipping attention norm fusion for DeepseekV2Attention: unsupported proj layout.
+WARNING: Skipping attention norm fusion for DeepseekV2Attention: unsupported proj layout.
+WARNING: Skipping attention norm fusion for DeepseekV2Attention: unsupported proj layout.
+WARNING: Skipping attention norm fusion for DeepseekV2Attention: unsupported proj layout.
+WARNING: Skipping attention norm fusion for DeepseekV2Attention: unsupported proj layout.
+WARNING: Skipping attention norm fusion for DeepseekV2Attention: unsupported proj layout.
+Fusing Layer Norms:  93%|█████████▎| 25/27 [00:00<00:00, 102.96layer/s]WARNING: Skipping attention norm fusion for DeepseekV2Attention: unsupported proj layout.
+WARNING: Skipping attention norm fusion for DeepseekV2Attention: unsupported proj layout.
+Fusing Layer Norms: 100%|██████████| 27/27 [00:00<00:00, 104.97layer/s]
+GPU memory (from rotate_model): 35.18 -> 32.04 GB (-3.14 GB)
+Rotating:   0%|          | 0/27 [00:00<?, ?layer/s]Rotating:   0%|          | 0/27 [00:00<?, ?layer/s]
+Traceback (most recent call last):
+  File "/export/home2/zihan/MoEQuant/code/fake_quant/main.py", line 407, in <module>
+    main()
+  File "/export/home2/zihan/MoEQuant/code/fake_quant/main.py", line 263, in main
+    rotation_utils.rotate_model(model, args)      
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/export/home2/zihan/miniconda3/envs/moe/lib/python3.11/site-packages/torch/utils/_contextlib.py", line 115, in decorate_context
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/export/home2/zihan/MoEQuant/code/fake_quant/rotation_utils.py", line 250, in rotate_model
+    rotate_attention_inputs(layers[idx], Q, model_type)
+  File "/export/home2/zihan/MoEQuant/code/fake_quant/rotation_utils.py", line 56, in rotate_attention_inputs
+    for W in [layer.self_attn.q_proj, layer.self_attn.k_proj, layer.self_attn.v_proj]:
+                                      ^^^^^^^^^^^^^^^^^^^^^^
+  File "/export/home2/zihan/miniconda3/envs/moe/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1688, in __getattr__
+    raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+AttributeError: 'DeepseekV2Attention' object has no attribute 'k_proj'. Did you mean: 'o_proj'?

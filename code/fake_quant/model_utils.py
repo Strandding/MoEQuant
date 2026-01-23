@@ -308,8 +308,17 @@ def get_pre_head_layernorm(model, model_type):
                           #transformers.models.qwen2_moe.modeling_qwen2_moe.Qwen2MoeRMSNorm)
     elif _is_deepseek_type(model_type):
         pre_head_layernorm = model.model.norm
-        if model_type == DEEPSEEK_MODEL:
-            assert isinstance(pre_head_layernorm, deepseek_moe_16b_chat.modeling_deepseek.DeepseekRMSNorm)
+        if not hasattr(pre_head_layernorm, "weight"):
+            raise TypeError(
+                f"DeepSeek norm {type(pre_head_layernorm).__name__} has no weight; cannot fuse layer norms."
+            )
+        if model_type == DEEPSEEK_MODEL and not isinstance(
+            pre_head_layernorm, deepseek_moe_16b_chat.modeling_deepseek.DeepseekRMSNorm
+        ):
+            logging.warning(
+                "DeepSeek norm class %s is not DeepseekRMSNorm; continuing for V2 compatibility.",
+                type(pre_head_layernorm).__name__,
+            )
     elif model_type == MIXTRAL_MODEL:
         pre_head_layernorm = model.model.norm
         assert isinstance(pre_head_layernorm, mixtral_model.modeling_mixtral.MixtralRMSNorm)

@@ -85,4 +85,22 @@ Arguments:
 Token indices sequence length is longer than the specified maximum sequence length for this model (299078 > 32768). Running this sequence through the model will result in indexing errors
 -----GPTQ Quantization-----
 
-Layer 0: 
+Layer 0: mlp.experts.0.gate_proj  Traceback (most recent call last):
+  File "/export/home2/zihan/MoEQuant/code/fake_quant/main.py", line 400, in <module>
+    main()
+  File "/export/home2/zihan/MoEQuant/code/fake_quant/main.py", line 322, in main
+    quantizers = gptq_utils_moe.gptq_fwrd(model, tokenizer, trainloader, utils.DEV, args, bit_settings)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/export/home2/zihan/miniconda3/envs/moe/lib/python3.11/site-packages/torch/utils/_contextlib.py", line 115, in decorate_context
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/export/home2/zihan/MoEQuant/code/fake_quant/gptq_utils_moe.py", line 497, in gptq_fwrd
+    gptq[name].fasterquant(
+  File "/export/home2/zihan/MoEQuant/code/fake_quant/gptq_utils_moe.py", line 157, in fasterquant
+    torch.cuda.synchronize()
+  File "/export/home2/zihan/miniconda3/envs/moe/lib/python3.11/site-packages/torch/cuda/__init__.py", line 799, in synchronize
+    _lazy_init()
+  File "/export/home2/zihan/miniconda3/envs/moe/lib/python3.11/site-packages/torch/cuda/__init__.py", line 302, in _lazy_init
+    torch._C._cuda_init()
+RuntimeError: No CUDA GPUs are available
+./script/quant_eval.sh: line 86: GPTQ: command not found
