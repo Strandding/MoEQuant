@@ -52,6 +52,18 @@ def rotate_embeddings(model, Q: torch.Tensor) -> None:
     
 def rotate_attention_inputs(layer, Q, model_type) -> None:
     # Rotate the WQ, WK and WV matrices of the self-attention layer.
+    # Skip for layers without self_attn (e.g., Qwen3-Next with mixed architecture)
+    if not hasattr(layer, 'self_attn'):
+        return
+
+    # Skip for DeepSeek V2 MLA which has different projection structure
+    if model_utils._is_deepseek_v2_type(model_type) and not hasattr(layer.self_attn, 'q_proj'):
+        return
+
+    # Skip if standard projection layers don't exist
+    if not (hasattr(layer.self_attn, 'q_proj') and hasattr(layer.self_attn, 'k_proj') and hasattr(layer.self_attn, 'v_proj')):
+        return
+
     for W in [layer.self_attn.q_proj, layer.self_attn.k_proj, layer.self_attn.v_proj]:
         dtype = W.weight.dtype
         # W_ = W.weight.to(device=utils.DEV, dtype=torch.float64)
@@ -61,6 +73,10 @@ def rotate_attention_inputs(layer, Q, model_type) -> None:
 
 def rotate_attention_output(layer, Q, model_type) -> None:
     # Rotate output matrix of the self-attention layer.
+    # Skip for layers without self_attn (e.g., Qwen3-Next with mixed architecture)
+    if not hasattr(layer, 'self_attn'):
+        return
+
     if model_type == model_utils.LLAMA_MODEL:
         W = layer.self_attn.o_proj
     elif model_type == model_utils.OPT_MODEL:
@@ -230,6 +246,18 @@ def rotate_head(model, Q: torch.Tensor) -> None:
     W.weight.data = torch.matmul(W_, Q.to(W.weight.device)).to(dtype=dtype)
 
 def rotate_ov_proj(layer, model_type, head_num, head_dim):
+    # Skip for layers without self_attn (e.g., Qwen3-Next with mixed architecture)
+    if not hasattr(layer, 'self_attn'):
+        return
+
+    # Skip for DeepSeek V2 MLA which has different projection structure
+    if model_utils._is_deepseek_v2_type(model_type) and not hasattr(layer.self_attn, 'v_proj'):
+        return
+
+    # Skip if v_proj doesn't exist
+    if not hasattr(layer.self_attn, 'v_proj'):
+        return
+
     v_proj = layer.self_attn.v_proj
     if model_type == model_utils.LLAMA_MODEL:
         o_proj = layer.self_attn.o_proj
@@ -381,18 +409,35 @@ def fuse_layer_norms(model):
         if hasattr(input_norm, 'weight'):
             with torch.no_grad():
                 scale = input_norm.weight.data.double()
-                # Gather attention input layers (Q, K, V)
-                attn_inputs = [layer.self_attn.q_proj, layer.self_attn.k_proj, layer.self_attn.v_proj]
-                
-                for mod in attn_inputs:
-                    mod.weight.data = (mod.weight.data.double() * scale.unsqueeze(0)).to(mod.weight.dtype)
-                    # Handle bias if present (RMSNorm typically has no bias, LayerNorm does)
-                    if hasattr(input_norm, 'bias') and input_norm.bias is not None and mod.bias is not None:
-                        mod.bias.data = (mod.bias.data.double() + torch.matmul(mod.weight.data.double(), input_norm.bias.data.double())).to(mod.bias.dtype)
-                
-                input_norm.weight.data.fill_(1.0)
-                if hasattr(input_norm, 'bias') and input_norm.bias is not None:
-                    input_norm.bias.data.fill_(0.0)
+
+                # Check if layer has self_attn attribute (skip for Qwen3-Next and other special architectures)
+                if not hasattr(layer, 'self_attn'):
+                    # Layer doesn't have self_attn (e.g., Qwen3-Next with mixed linear attention)
+                    # Skip attention fusion for this layer
+                    pass
+                else:
+                    # Check if this is DeepSeek V2 with MLA architecture
+                    is_deepseek_v2_mla = (model_utils._is_deepseek_v2_type(model_type) and
+                                           not hasattr(layer.self_attn, 'q_proj'))
+
+                    if is_deepseek_v2_mla:
+                        # DeepSeek V2 uses MLA with different projection layers
+                        # Skip attention fusion for now as it has different structure
+                        # (q_a_proj, q_b_proj, kv_a_proj_with_mqa, kv_b_proj instead of q/k/v_proj)
+                        pass
+                    elif hasattr(layer.self_attn, 'q_proj') and hasattr(layer.self_attn, 'k_proj') and hasattr(layer.self_attn, 'v_proj'):
+                        # Standard attention with q_proj, k_proj, v_proj
+                        attn_inputs = [layer.self_attn.q_proj, layer.self_attn.k_proj, layer.self_attn.v_proj]
+
+                        for mod in attn_inputs:
+                            mod.weight.data = (mod.weight.data.double() * scale.unsqueeze(0)).to(mod.weight.dtype)
+                            # Handle bias if present (RMSNorm typically has no bias, LayerNorm does)
+                            if hasattr(input_norm, 'bias') and input_norm.bias is not None and mod.bias is not None:
+                                mod.bias.data = (mod.bias.data.double() + torch.matmul(mod.weight.data.double(), input_norm.bias.data.double())).to(mod.bias.dtype)
+
+                        input_norm.weight.data.fill_(1.0)
+                        if hasattr(input_norm, 'bias') and input_norm.bias is not None:
+                            input_norm.bias.data.fill_(0.0)
 
         # --- Fuse post_norm into MLP Inputs ---
         if hasattr(post_norm, 'weight'):

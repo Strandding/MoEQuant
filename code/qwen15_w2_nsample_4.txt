@@ -1,0 +1,119 @@
+Arguments: 
+{'AGQ_GPTQ': True,
+ 'EBSS_calib': True,
+ 'a_asym': False,
+ 'a_bits': 16,
+ 'a_clip_ratio': 1.0,
+ 'a_dynamic_method': 'pertensor',
+ 'a_groupsize': -1,
+ 'act_order': False,
+ 'bsz': 1,
+ 'cal_dataset': 'wikitext2',
+ 'calib_path': './EBSS_data/ebss_qwen15_selfbuild_merged.jsonl',
+ 'capture_layer_io': False,
+ 'distribute': False,
+ 'do_smooth': False,
+ 'eval_dataset': 'wikitext2',
+ 'fp32_had': True,
+ 'fully_quant': False,
+ 'hf_token': None,
+ 'human_res': './res_moe_qwen15_base_w2_selfebss_nsample_4',
+ 'int8_down_proj': False,
+ 'k_asym': False,
+ 'k_bits': 16,
+ 'k_clip_ratio': 1.0,
+ 'k_groupsize': -1,
+ 'k_pre_rope': False,
+ 'layer_idx': 10,
+ 'lm_eval': False,
+ 'lm_eval_batch_size': 128,
+ 'load_qmodel_path': None,
+ 'model': '/dataset/common/pretrain_model/Qwen1.5-MoE-A2.7B',
+ 'nsamples': 4,
+ 'online_hadamard': False,
+ 'percdamp': 0.01,
+ 'pre_eval': False,
+ 'quant_test': True,
+ 'rotate': False,
+ 'rotate_mode': 'hadamard',
+ 'rotation_seed': -1,
+ 'save_name': '20260120_124930',
+ 'save_path': './log',
+ 'save_qmodel_path': '/dataset/common/quant_model/moequant_qwen15_base_w2_selfebss_nsample_4.pth',
+ 'seed': 0,
+ 'shared_expert_act_calib': False,
+ 'static_test': False,
+ 'tasks': ['piqa',
+           'hellaswag',
+           'arc_easy',
+           'arc_challenge',
+           'winogrande',
+           'lambada'],
+ 'v_asym': False,
+ 'v_bits': 16,
+ 'v_clip_ratio': 1.0,
+ 'v_groupsize': -1,
+ 'w_asym': False,
+ 'w_bits': 2,
+ 'w_clip': True,
+ 'w_groupsize': -1,
+ 'w_rtn': False,
+ 'wandb': False,
+ 'wandb_id': None,
+ 'wandb_project': None}
+------------------------------------------------------------
+`torch_dtype` is deprecated! Use `dtype` instead!
+Loading checkpoint shards:   0%|          | 0/8 [00:00<?, ?it/s]Loading checkpoint shards:  12%|█▎        | 1/8 [00:01<00:08,  1.15s/it]Loading checkpoint shards:  25%|██▌       | 2/8 [00:02<00:06,  1.14s/it]Loading checkpoint shards:  38%|███▊      | 3/8 [00:03<00:05,  1.12s/it]Loading checkpoint shards:  50%|█████     | 4/8 [00:04<00:04,  1.11s/it]Loading checkpoint shards:  62%|██████▎   | 5/8 [00:05<00:03,  1.10s/it]Loading checkpoint shards:  75%|███████▌  | 6/8 [00:06<00:02,  1.09s/it]Loading checkpoint shards:  88%|████████▊ | 7/8 [00:07<00:01,  1.08s/it]Loading checkpoint shards: 100%|██████████| 8/8 [00:07<00:00,  1.24it/s]Loading checkpoint shards: 100%|██████████| 8/8 [00:07<00:00,  1.01it/s]
+---> Loading /dataset/common/pretrain_model/Qwen1.5-MoE-A2.7B Model (class: Qwen2MoeForCausalLM) with seq_len: 2048
+---> Using model-level rotary_emb for quantization
+Token indices sequence length is longer than the specified maximum sequence length for this model (299078 > 32768). Running this sequence through the model will result in indexing errors
+-----GPTQ Quantization-----
+---> Detected 60 experts in the model
+
+Layer 0: mlp.experts.0.gate_proj  mlp.experts.0.up_proj  mlp.experts.0.down_proj  
+Layer 1: mlp.experts.0.gate_proj  mlp.experts.0.up_proj  mlp.experts.0.down_proj  
+Layer 2: mlp.experts.0.gate_proj  mlp.experts.0.up_proj  mlp.experts.0.down_proj  
+Layer 3: mlp.experts.0.gate_proj  mlp.experts.0.up_proj  mlp.experts.0.down_proj  
+Layer 4: mlp.experts.0.gate_proj  mlp.experts.0.up_proj  mlp.experts.0.down_proj  
+Layer 5: mlp.experts.0.gate_proj  mlp.experts.0.up_proj  mlp.experts.0.down_proj  
+Layer 6: mlp.experts.0.gate_proj  mlp.experts.0.up_proj  mlp.experts.0.down_proj  
+Layer 7: mlp.experts.0.gate_proj  mlp.experts.0.up_proj  mlp.experts.0.down_proj  
+Layer 8: mlp.experts.0.gate_proj  mlp.experts.0.up_proj  mlp.experts.0.down_proj  
+Layer 9: mlp.experts.0.gate_proj  mlp.experts.0.up_proj  mlp.experts.0.down_proj  
+Layer 10: mlp.experts.0.gate_proj  mlp.experts.0.up_proj  mlp.experts.0.down_proj  
+Layer 11: mlp.experts.0.gate_proj  mlp.experts.0.up_proj  mlp.experts.0.down_proj  
+Layer 12: mlp.experts.0.gate_proj  WARNING: Hessian matrix is all zeros - this expert was never selected during calibration!
+WARNING: Skipping GPTQ quantization for this layer, using simple rounding instead.
+mlp.experts.0.up_proj  WARNING: Hessian matrix is all zeros - this expert was never selected during calibration!
+WARNING: Skipping GPTQ quantization for this layer, using simple rounding instead.
+Traceback (most recent call last):
+  File "/export/home2/zihan/MoEQuant/code/fake_quant/main.py", line 480, in <module>
+    main()
+  File "/export/home2/zihan/MoEQuant/code/fake_quant/main.py", line 360, in main
+    quantizers = gptq_utils_moe.gptq_fwrd(model, tokenizer, trainloader, utils.DEV, args, bit_settings)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/export/home2/zihan/miniconda3/envs/moe/lib/python3.11/site-packages/torch/utils/_contextlib.py", line 115, in decorate_context
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/export/home2/zihan/MoEQuant/code/fake_quant/gptq_utils_moe.py", line 578, in gptq_fwrd
+    outs[jjj] = layer(inps[jjj].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids,cur_sample=jjj)[0]
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/export/home2/zihan/miniconda3/envs/moe/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1511, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/export/home2/zihan/miniconda3/envs/moe/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1520, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/export/home2/zihan/MoEQuant/code/fake_quant/quant_layers/quant_layer.py", line 421, in forward
+    mlp_output = self.mlp(hidden_states,cur_sample)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/export/home2/zihan/miniconda3/envs/moe/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1511, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/export/home2/zihan/miniconda3/envs/moe/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1520, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/export/home2/zihan/MoEQuant/code/fake_quant/quant_layers/quant_layer.py", line 139, in forward
+    idx, top_x = torch.where(expert_mask[expert_idx])
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt

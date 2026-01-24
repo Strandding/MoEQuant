@@ -295,6 +295,9 @@ class QuantAttention(nn.Module):
             cache_length = past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
             kv_seq_len += cache_length
         # transformers 4.40.0 Qwen2MoeRotaryEmbedding.forward() takes (x, position_ids)
+        # Fix device mismatch: move position_ids to same device as value_states
+        if position_ids is not None and position_ids.device != value_states.device:
+            position_ids = position_ids.to(value_states.device)
         cos, sin = self.rotary_emb(value_states, position_ids)
         rotary_matrix = build_rotary_matrix(cos, sin).to(query_states.device)
 
@@ -346,6 +349,11 @@ class QuantDecoderLayer(nn.Module):
         self.use_act_quant = False
         self.use_fully_quant = False
 
+        # Detect return format based on original layer type
+        # Qwen2MoeDecoderLayer returns tuple, while newer models return tensor
+        ori_layer_name = ori_layer.__class__.__name__
+        self.return_tuple = 'Qwen2Moe' in ori_layer_name or 'Qwen15Moe' in ori_layer_name
+
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -353,6 +361,7 @@ class QuantDecoderLayer(nn.Module):
         position_ids: Optional[torch.LongTensor] = None,
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
         output_attentions: Optional[bool] = False,
+        output_router_logits: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cur_sample: int = 0,
         **kwargs,
@@ -378,6 +387,18 @@ class QuantDecoderLayer(nn.Module):
             past_key_value (`Tuple(torch.FloatTensor)`, *optional*): cached past key and value projection states
         """
 
+        # Fix device mismatch for multi-GPU setups (device_map='auto')
+        # Get target device from layer parameters
+        target_device = self.input_layernorm.weight.device
+
+        # Move all inputs to the target device if needed
+        if hidden_states.device != target_device:
+            hidden_states = hidden_states.to(target_device)
+        if attention_mask is not None and attention_mask.device != target_device:
+            attention_mask = attention_mask.to(target_device)
+        if position_ids is not None and position_ids.device != target_device:
+            position_ids = position_ids.to(target_device)
+
         residual = hidden_states
 
         hidden_states = self.input_layernorm(hidden_states)
@@ -395,15 +416,26 @@ class QuantDecoderLayer(nn.Module):
         # Fully Connected
         residual = hidden_states
         hidden_states = self.post_attention_layernorm(hidden_states)
-        hidden_states = self.mlp(hidden_states,cur_sample)[0]
+
+        # MLP returns (hidden_states, router_logits)
+        mlp_output = self.mlp(hidden_states,cur_sample)
+        hidden_states = mlp_output[0]
+        router_logits = mlp_output[1] if len(mlp_output) > 1 else None
+
         hidden_states = self.resadd2(residual, hidden_states)
 
-        outputs = (hidden_states,)
-        if output_attentions:
-            outputs += (self_attn_weights,)
-        if use_cache:
-            outputs += (present_key_value,)
-        return outputs
+        # Return format depends on model architecture:
+        # - Qwen2-MoE (Qwen1.5-MoE): returns tuple (hidden_states,) and optionally more elements
+        # - Qwen3-MoE, Mixtral, DeepSeek-V2: returns tensor directly
+        if self.return_tuple:
+            outputs = (hidden_states,)
+            if output_attentions:
+                outputs += (self_attn_weights,)
+            if output_router_logits:
+                outputs += (router_logits,)
+            return outputs
+        else:
+            return hidden_states
 
     # def set_quant_state(
     #     self,
@@ -489,7 +521,7 @@ class QuantDecoderLayer(nn.Module):
 
         # [MoE Experts 部分]：启用量化 (仅 up, down, gate projections)
         # 1. Shared Expert (共享专家)
-        if hasattr(self.mlp, 'shared_expert'):
+        if hasattr(self.mlp, 'shared_expert') or hasattr(self.mlp, 'shared_experts'):
             self.mlp.shared_expert.gate_proj.use_weight_quant = False
             self.mlp.shared_expert.up_proj.use_weight_quant = False
             self.mlp.shared_expert.down_proj.use_weight_quant = False
@@ -497,9 +529,14 @@ class QuantDecoderLayer(nn.Module):
         # 2. Normal Experts (普通专家)
         # 使用 len(self.mlp.experts) 动态获取专家数量，替代原代码中的 range(60)
         for i in range(len(self.mlp.experts)):
-            self.mlp.experts[i].gate_proj.use_weight_quant = use_weight_quant
-            self.mlp.experts[i].up_proj.use_weight_quant = use_weight_quant
-            self.mlp.experts[i].down_proj.use_weight_quant = use_weight_quant
+            if i in [0]:
+                self.mlp.experts[i].gate_proj.use_weight_quant = use_weight_quant
+                self.mlp.experts[i].up_proj.use_weight_quant = use_weight_quant
+                self.mlp.experts[i].down_proj.use_weight_quant = use_weight_quant
+            else:
+                self.mlp.experts[i].gate_proj.use_weight_quant = False
+                self.mlp.experts[i].up_proj.use_weight_quant = False
+                self.mlp.experts[i].down_proj.use_weight_quant = False
 
         # -------------------------------------------
         # B. 激活量化设置 (Activation Quantization)

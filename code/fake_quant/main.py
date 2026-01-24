@@ -252,7 +252,7 @@ def main():
             trust_remote_code=True
         )
         model.seqlen = 2048
-        logging.info('---> Loaded DeepSeek Model (class: {})'.format(model.__class__.__name__))
+        # logging.info('---> Loaded DeepSeek Model (class: {})'.format(model.__class__.__name__))
         test_loader = data_utils.get_loaders(
                 args.eval_dataset,
                 seed=args.seed,

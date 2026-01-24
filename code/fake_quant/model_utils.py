@@ -101,7 +101,8 @@ def model_type_extractor(model):
         return _QWEN_MODEL_CLASS if _QWEN_MODEL_CLASS is not None else QWEN_MODEL
     elif _is_deepseek_v2_model(model):
         # DeepSeek V2 has priority over V1 check
-        return _DEEPSEEK_V2_MODEL_CLASS if _DEEPSEEK_V2_MODEL_CLASS is not None else DEEPSEEK_MODEL
+        # Return the actual model class instead of DEEPSEEK_MODEL if _DEEPSEEK_V2_MODEL_CLASS is not set
+        return _DEEPSEEK_V2_MODEL_CLASS if _DEEPSEEK_V2_MODEL_CLASS is not None else model.__class__
     elif isinstance(model, DEEPSEEK_MODEL):
         return DEEPSEEK_MODEL
     elif isinstance(model, MIXTRAL_MODEL):
@@ -151,7 +152,7 @@ def get_qwen(model_name, hf_token, args):
         torch_dtype=torch.float16,
         use_auth_token=hf_token,
         attn_implementation="eager",
-        device_map='cuda',
+        device_map='auto',
         trust_remote_code=True
     )
 
@@ -215,8 +216,30 @@ def get_qwen(model_name, hf_token, args):
         args.rotary_emb = model.model.rotary_emb
         logging.info('---> Using model-level rotary_emb for quantization')
 
+    # Check if this is Qwen3-Next (uses mixed architecture with linear attention)
+    # Note: Qwen3-Next has 'Qwen3Next' in class name but NOT 'Moe'
+    # Other models: Qwen2MoeForCausalLM, Qwen3MoeForCausalLM have 'Moe' in class name
+    model_class_name = model.__class__.__name__
+    is_qwen3_next = 'Qwen3Next' in model_class_name and 'Moe' not in model_class_name
+
+    # Additional safety check: verify first layer structure
+    if len(layers) > 0:
+        first_layer_has_self_attn = hasattr(layers[0], 'self_attn')
+        if not first_layer_has_self_attn:
+            logging.warning(f'---> Detected layer without self_attn attribute: {layers[0].__class__.__name__}')
+            is_qwen3_next = True  # Force skip wrapping if no self_attn
+
+    if is_qwen3_next:
+        logging.info(f'---> Detected {model_class_name}: Skipping QuantDecoderLayer wrapping (MoE quantization will be applied at GPTQ stage)')
+
     for i in range(len(layers)):
-        layers[i] = QuantDecoderLayer(model.config,layers[i],args)
+        # Skip QuantDecoderLayer wrapping for Qwen3-Next or other special architectures
+        # Qwen3-Next uses mixed architecture (linear attention + standard attention)
+        # and doesn't have standard self_attn structure
+        # Standard Qwen MoE models (Qwen1.5-MoE, Qwen2-MoE, Qwen3-MoE) have self_attn and will be wrapped
+        if not is_qwen3_next:
+            layers[i] = QuantDecoderLayer(model.config,layers[i],args)
+
     model.model.embed_tokens = QuantEmbedding(model.model.embed_tokens,args.embed_quant_params) # TODO add embed_tokens's quantizaton-config
     model.model.norm = QuantRMSNorm(model.model.norm,dict(bits=32))
     model.lm_head = QuantLinear(model.lm_head,dict(bits=32))
@@ -305,7 +328,8 @@ def get_pre_head_layernorm(model, model_type):
         # DeepSeek V1 and V2 both have model.model.norm
         pre_head_layernorm = model.model.norm
         # Skip type assertion for DeepSeek V2 as it uses dynamically loaded classes
-        if model_type == DEEPSEEK_MODEL:
+        # Only assert for DeepSeek V1 (when model_type is exactly DEEPSEEK_MODEL and not V2)
+        if model_type == DEEPSEEK_MODEL and not _is_deepseek_v2_type(model_type):
             assert isinstance(pre_head_layernorm, deepseek_moe_16b_chat.modeling_deepseek.DeepseekRMSNorm)
     elif model_type == MIXTRAL_MODEL:
         pre_head_layernorm = model.model.norm

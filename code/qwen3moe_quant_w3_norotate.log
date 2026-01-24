@@ -1,0 +1,100 @@
+Arguments: 
+{'AGQ_GPTQ': True,
+ 'EBSS_calib': True,
+ 'a_asym': False,
+ 'a_bits': 16,
+ 'a_clip_ratio': 1.0,
+ 'a_dynamic_method': 'pertensor',
+ 'a_groupsize': -1,
+ 'act_order': False,
+ 'bsz': 1,
+ 'cal_dataset': 'wikitext2',
+ 'calib_path': './EBSS_data/ebss_qwen3_selfbuild_merged.jsonl',
+ 'capture_layer_io': False,
+ 'distribute': False,
+ 'do_smooth': False,
+ 'eval_dataset': 'wikitext2',
+ 'fp32_had': True,
+ 'fully_quant': False,
+ 'hf_token': None,
+ 'human_res': './res_moe_qwen3_base_w3_selfebss',
+ 'int8_down_proj': False,
+ 'k_asym': False,
+ 'k_bits': 16,
+ 'k_clip_ratio': 1.0,
+ 'k_groupsize': -1,
+ 'k_pre_rope': False,
+ 'layer_idx': 10,
+ 'lm_eval': False,
+ 'lm_eval_batch_size': 128,
+ 'load_qmodel_path': None,
+ 'model': '/dataset/common/pretrain_model/Qwen3-30B-A3B-Base',
+ 'nsamples': 4,
+ 'online_hadamard': False,
+ 'percdamp': 0.01,
+ 'pre_eval': False,
+ 'quant_test': True,
+ 'rotate': False,
+ 'rotate_mode': 'hadamard',
+ 'rotation_seed': -1,
+ 'save_name': '20260120_104049',
+ 'save_path': './log',
+ 'save_qmodel_path': '/dataset/common/quant_model/moequant_qwen3moe_base_w3_myebss_norotate.pth',
+ 'seed': 0,
+ 'shared_expert_act_calib': False,
+ 'static_test': False,
+ 'tasks': ['piqa',
+           'hellaswag',
+           'arc_easy',
+           'arc_challenge',
+           'winogrande',
+           'lambada'],
+ 'v_asym': False,
+ 'v_bits': 16,
+ 'v_clip_ratio': 1.0,
+ 'v_groupsize': -1,
+ 'w_asym': False,
+ 'w_bits': 3,
+ 'w_clip': True,
+ 'w_groupsize': -1,
+ 'w_rtn': False,
+ 'wandb': False,
+ 'wandb_id': None,
+ 'wandb_project': None}
+------------------------------------------------------------
+`torch_dtype` is deprecated! Use `dtype` instead!
+Loading checkpoint shards:   0%|          | 0/16 [00:00<?, ?it/s]Loading checkpoint shards:   6%|▋         | 1/16 [00:01<00:23,  1.58s/it]Loading checkpoint shards:  12%|█▎        | 2/16 [00:03<00:21,  1.53s/it]Loading checkpoint shards:  19%|█▉        | 3/16 [00:04<00:19,  1.49s/it]Loading checkpoint shards:  25%|██▌       | 4/16 [00:05<00:17,  1.47s/it]Loading checkpoint shards:  31%|███▏      | 5/16 [00:07<00:16,  1.46s/it]Loading checkpoint shards:  38%|███▊      | 6/16 [00:08<00:14,  1.45s/it]Loading checkpoint shards:  44%|████▍     | 7/16 [00:10<00:13,  1.45s/it]Loading checkpoint shards:  50%|█████     | 8/16 [00:11<00:11,  1.45s/it]Loading checkpoint shards:  56%|█████▋    | 9/16 [00:13<00:10,  1.44s/it]Loading checkpoint shards:  62%|██████▎   | 10/16 [00:14<00:08,  1.45s/it]Loading checkpoint shards:  69%|██████▉   | 11/16 [00:16<00:07,  1.45s/it]Loading checkpoint shards:  75%|███████▌  | 12/16 [00:17<00:05,  1.46s/it]Loading checkpoint shards:  81%|████████▏ | 13/16 [00:19<00:04,  1.47s/it]Loading checkpoint shards:  81%|████████▏ | 13/16 [00:19<00:04,  1.52s/it]
+Traceback (most recent call last):
+  File "/export/home2/zihan/MoEQuant/code/fake_quant/main.py", line 480, in <module>
+    main()
+  File "/export/home2/zihan/MoEQuant/code/fake_quant/main.py", line 236, in main
+    model = model_utils.get_model(args.model, args.hf_token, args)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/export/home2/zihan/MoEQuant/code/fake_quant/model_utils.py", line 268, in get_model
+    return get_qwen(model_name, hf_token, args)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/export/home2/zihan/MoEQuant/code/fake_quant/model_utils.py", line 150, in get_qwen
+    model = transformers.AutoModelForCausalLM.from_pretrained(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/export/home2/zihan/miniconda3/envs/moe/lib/python3.11/site-packages/transformers/models/auto/auto_factory.py", line 604, in from_pretrained
+    return model_class.from_pretrained(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/export/home2/zihan/miniconda3/envs/moe/lib/python3.11/site-packages/transformers/modeling_utils.py", line 277, in _wrapper
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/export/home2/zihan/miniconda3/envs/moe/lib/python3.11/site-packages/transformers/modeling_utils.py", line 5048, in from_pretrained
+    ) = cls._load_pretrained_model(
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/export/home2/zihan/miniconda3/envs/moe/lib/python3.11/site-packages/transformers/modeling_utils.py", line 5468, in _load_pretrained_model
+    _error_msgs, disk_offload_index = load_shard_file(args)
+                                      ^^^^^^^^^^^^^^^^^^^^^
+  File "/export/home2/zihan/miniconda3/envs/moe/lib/python3.11/site-packages/transformers/modeling_utils.py", line 843, in load_shard_file
+    disk_offload_index = _load_state_dict_into_meta_model(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/export/home2/zihan/miniconda3/envs/moe/lib/python3.11/site-packages/torch/utils/_contextlib.py", line 115, in decorate_context
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/export/home2/zihan/miniconda3/envs/moe/lib/python3.11/site-packages/transformers/modeling_utils.py", line 750, in _load_state_dict_into_meta_model
+    param = param.to(casting_dtype)
+            ^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt

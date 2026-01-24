@@ -1,6 +1,6 @@
 import json
 
-def merge_jsonl(input_file, output_file, group_size=16):
+def merge_jsonl(input_file, output_file, group_size=32):
     """
     将jsonl文件每group_size行合并为一行，主要合并text字段。
     """

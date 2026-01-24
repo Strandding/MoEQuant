@@ -182,7 +182,20 @@ class QuantRMSNorm(nn.Module):
         act_quant_params=dict(bits=8, symmetric=True, dynamic_method="perchannel"),
     ):
         super().__init__()
-        self.eps = ori_norm.variance_epsilon
+        # Different RMSNorm implementations use different epsilon attribute names
+        # Try common attribute names in order: variance_epsilon, eps, epsilon
+        if hasattr(ori_norm, 'variance_epsilon'):
+            self.eps = ori_norm.variance_epsilon
+        elif hasattr(ori_norm, 'eps'):
+            self.eps = ori_norm.eps
+        elif hasattr(ori_norm, 'epsilon'):
+            self.eps = ori_norm.epsilon
+        else:
+            # Fallback to a reasonable default if none found
+            self.eps = 1e-6
+            import warnings
+            warnings.warn(f"Could not find epsilon attribute in {ori_norm.__class__.__name__}, using default 1e-6")
+
         self.act_quantizer = Quantizer(**act_quant_params)
         self.register_buffer("weight", ori_norm.weight.data)
         self.bias = None
@@ -195,8 +208,21 @@ class QuantRMSNorm(nn.Module):
 
     def forward(self, hidden_states):
         i_dtype = hidden_states.dtype
+
+        # Get target device from weight first to avoid device mismatch
+        if self.use_temporary_parameter and self.temp_weight is not None:
+            target_device = self.temp_weight.device
+        else:
+            target_device = self.weight.device
+
+        # Move hidden_states to target device BEFORE any computation
+        # This is crucial for multi-GPU setups with device_map='auto'
+        hidden_states = hidden_states.to(target_device)
+
+        # Now compute variance and normalization on the same device
         variance = hidden_states.to(torch.float32).pow(2).mean(-1, keepdim=True)
         hidden_states = hidden_states * torch.rsqrt(variance + self.eps)
+
         if self.fuse_weight:
             out = hidden_states.to(i_dtype)
         else:
@@ -206,6 +232,7 @@ class QuantRMSNorm(nn.Module):
             else:
                 weight = self.weight
                 bias = self.bias if hasattr(self, "bias") else None
+
             out = (
                 (weight * hidden_states.to(i_dtype) + bias.to(i_dtype))
                 if bias is not None

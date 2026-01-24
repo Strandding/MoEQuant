@@ -76,10 +76,27 @@ class GPTQ:
         damp = percdamp * torch.mean(torch.diag(H))
         diag = torch.arange(self.columns, device=self.dev)
         H[diag, diag] += damp
-        H = torch.linalg.cholesky(H)
-        H = torch.cholesky_inverse(H)
-        H = torch.linalg.cholesky(H, upper=True)
-        Hinv = H
+
+        # Add numerical stability: try Cholesky decomposition with error handling
+        try:
+            H = torch.linalg.cholesky(H)
+            H = torch.cholesky_inverse(H)
+            H = torch.linalg.cholesky(H, upper=True)
+            Hinv = H
+        except RuntimeError as e:
+            logging.error(f'Cholesky decomposition failed: {e}')
+            logging.error(f'Hessian matrix stats - min: {H.min()}, max: {H.max()}, mean: {H.mean()}')
+            # Try with increased damping
+            logging.warning('Retrying with increased damping factor (10x)')
+            H[diag, diag] += damp * 9  # Total 10x damping
+            try:
+                H = torch.linalg.cholesky(H)
+                H = torch.cholesky_inverse(H)
+                H = torch.linalg.cholesky(H, upper=True)
+                Hinv = H
+            except RuntimeError as e2:
+                logging.error(f'Cholesky decomposition failed again: {e2}')
+                raise ValueError('Cannot perform Cholesky decomposition on Hessian matrix')
 
         for i1 in range(0, self.columns, blocksize):
             i2 = min(i1 + blocksize, self.columns)
@@ -94,6 +111,12 @@ class GPTQ:
             for i in range(count):
                 w = W1[:, i]
                 d = Hinv1[i, i]
+
+                # Add numerical stability: clamp d to avoid division by zero or very small numbers
+                # This is important for rotated models where the Hessian might be ill-conditioned
+                if torch.abs(d) < 1e-6:
+                    logging.warning(f'Small diagonal element detected: d={d}, clamping to 1e-6')
+                    d = torch.clamp(d, min=1e-6)
 
                 if groupsize != -1:
                     if not static_groups:
@@ -125,10 +148,22 @@ class GPTQ:
 
         self.layer.weight.data = Q.reshape(self.layer.weight.shape).to(self.layer.weight.data.dtype)
         if torch.any(torch.isnan(self.layer.weight.data)):
-            logging.warning('NaN in weights')
+            logging.error('=' * 60)
+            logging.error('NaN DETECTED IN QUANTIZED WEIGHTS')
+            logging.error('=' * 60)
             import pprint
-            pprint.pprint(self.quantizer.bits, self.quantizer.scale, self.quantizer.zero_point)
-            raise ValueError('NaN in weights')
+            # Use 'zero' instead of 'zero_point' to match WeightQuantizer attributes
+            logging.error('Quantizer configuration:')
+            pprint.pprint({'bits': self.quantizer.bits,
+                          'scale_shape': self.quantizer.scale.shape,
+                          'scale_min': self.quantizer.scale.min().item() if self.quantizer.scale.numel() > 0 else None,
+                          'scale_max': self.quantizer.scale.max().item() if self.quantizer.scale.numel() > 0 else None,
+                          'zero_shape': self.quantizer.zero.shape})
+            logging.error(f'Original weight stats - min: {W.min()}, max: {W.max()}, mean: {W.mean()}')
+            logging.error(f'Quantized weight stats - min: {Q.min()}, max: {Q.max()}, mean: {Q.mean()}')
+            logging.error(f'NaN count: {torch.isnan(self.layer.weight.data).sum()} / {self.layer.weight.data.numel()}')
+            logging.error('=' * 60)
+            raise ValueError('NaN in weights - check logs for details')
 
     def free(self):
         self.H = None

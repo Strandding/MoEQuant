@@ -24,6 +24,11 @@ class GPTQ:
         self.nsamples = 0
 
     def add_batch(self, inp, out):
+        # Check for NaN in input activations
+        if torch.any(torch.isnan(inp)):
+            logging.warning(f'NaN detected in input activations for add_batch! Replacing with zeros.')
+            inp = torch.nan_to_num(inp, nan=0.0)
+
         if len(inp.shape) == 2:
             inp = inp.unsqueeze(0)
         tmp = inp.shape[0]
@@ -40,13 +45,20 @@ class GPTQ:
     def add_batch_score(self, routing_scores,selected_experts,expert_num, expert_sum,inp, out):
         expert_mask = torch.nn.functional.one_hot(selected_experts[self.layer.cur_sample], num_classes=expert_sum).permute(2, 1, 0)
         idx, top_x = torch.where(expert_mask[expert_num])
+
+        # Check if this expert was selected in the current sample
+        # If not selected, skip Hessian update for this batch
+        if idx.numel() == 0:
+            # Expert not selected in this sample, skip this batch
+            return
+
         s = routing_scores[self.layer.cur_sample][top_x, idx, None].to(inp.device)
         s1 = torch.sqrt(s)
         inp = inp*s1
         if len(inp.shape) == 2:
             inp = inp.unsqueeze(0)
         tmp = inp.shape[0]
-        # tmp = (s**2).sum() #/ inp.shape[1] 
+        # tmp = (s**2).sum() #/ inp.shape[1]
         if len(inp.shape) == 3:
             inp = inp.reshape((-1, inp.shape[-1]))
         inp = inp.t()
@@ -81,6 +93,33 @@ class GPTQ:
         W = self.layer.weight.data.clone()
         W = W.float()
 
+        # Early NaN detection: check original weights before quantization
+        if torch.any(torch.isnan(W)):
+            logging.error(f'NaN detected in ORIGINAL weights before quantization!')
+            logging.error(f'Weight shape: {W.shape}, NaN count: {torch.isnan(W).sum()} / {W.numel()}')
+            logging.error(f'Weight stats (ignoring NaN): min={W[~torch.isnan(W)].min() if (~torch.isnan(W)).any() else "all NaN"}, '
+                         f'max={W[~torch.isnan(W)].max() if (~torch.isnan(W)).any() else "all NaN"}')
+            raise ValueError('NaN in original weights - likely caused by rotation/fusion or previous layer propagation')
+
+        # Check Hessian for NaN
+        if torch.any(torch.isnan(self.H)):
+            logging.error(f'NaN detected in Hessian matrix!')
+            logging.error(f'Hessian shape: {self.H.shape}, NaN count: {torch.isnan(self.H).sum()} / {self.H.numel()}')
+            raise ValueError('NaN in Hessian matrix - check calibration data or input activations')
+
+        # Check if Hessian is all zeros (expert never used)
+        if torch.allclose(self.H, torch.zeros_like(self.H)):
+            logging.warning(f'Hessian matrix is all zeros - this expert was never selected during calibration!')
+            logging.warning(f'Skipping GPTQ quantization for this layer, using simple rounding instead.')
+            # Use simple rounding quantization as fallback
+            if not self.quantizer.ready():
+                self.quantizer.find_params(W)
+            scale = self.quantizer.scale
+            zero = self.quantizer.zero
+            q = torch.clamp(torch.round(W / scale) + zero, 0, self.quantizer.maxq)
+            self.layer.weight.data = (scale * (q - zero)).reshape(self.layer.weight.shape).to(self.layer.weight.data.dtype)
+            return
+
         tick = time.time()
 
         if not self.quantizer.ready():
@@ -112,10 +151,27 @@ class GPTQ:
         damp = percdamp * torch.mean(torch.diag(H))
         diag = torch.arange(self.columns, device=self.dev)
         H[diag, diag] += damp
-        H = torch.linalg.cholesky(H)
-        H = torch.cholesky_inverse(H)
-        H = torch.linalg.cholesky(H, upper=True)
-        Hinv = H
+
+        # Add numerical stability: try Cholesky decomposition with error handling
+        try:
+            H = torch.linalg.cholesky(H)
+            H = torch.cholesky_inverse(H)
+            H = torch.linalg.cholesky(H, upper=True)
+            Hinv = H
+        except RuntimeError as e:
+            logging.error(f'Cholesky decomposition failed: {e}')
+            logging.error(f'Hessian matrix stats - min: {H.min()}, max: {H.max()}, mean: {H.mean()}')
+            # Try with increased damping
+            logging.warning('Retrying with increased damping factor (10x)')
+            H[diag, diag] += damp * 9  # Total 10x damping
+            try:
+                H = torch.linalg.cholesky(H)
+                H = torch.cholesky_inverse(H)
+                H = torch.linalg.cholesky(H, upper=True)
+                Hinv = H
+            except RuntimeError as e2:
+                logging.error(f'Cholesky decomposition failed again: {e2}')
+                raise ValueError('Cannot perform Cholesky decomposition on Hessian matrix')
 
         for i1 in range(0, self.columns, blocksize):
             i2 = min(i1 + blocksize, self.columns)
@@ -130,6 +186,12 @@ class GPTQ:
             for i in range(count):
                 w = W1[:, i]
                 d = Hinv1[i, i]
+
+                # Add numerical stability: clamp d to avoid division by zero or very small numbers
+                # This is important for rotated models where the Hessian might be ill-conditioned
+                if torch.abs(d) < 1e-6:
+                    logging.warning(f'Small diagonal element detected: d={d}, clamping to 1e-6')
+                    d = torch.clamp(d, min=1e-6)
 
                 if groupsize != -1:
                     if not static_groups:
@@ -161,10 +223,22 @@ class GPTQ:
 
         self.layer.weight.data = Q.reshape(self.layer.weight.shape).to(self.layer.weight.data.dtype)
         if torch.any(torch.isnan(self.layer.weight.data)):
-            logging.warning('NaN in weights')
+            logging.error('=' * 60)
+            logging.error('NaN DETECTED IN QUANTIZED WEIGHTS')
+            logging.error('=' * 60)
             import pprint
-            pprint.pprint(self.quantizer.bits, self.quantizer.scale, self.quantizer.zero_point)
-            raise ValueError('NaN in weights')
+            # Use 'zero' instead of 'zero_point' to match WeightQuantizer attributes
+            logging.error('Quantizer configuration:')
+            pprint.pprint({'bits': self.quantizer.bits,
+                          'scale_shape': self.quantizer.scale.shape,
+                          'scale_min': self.quantizer.scale.min().item() if self.quantizer.scale.numel() > 0 else None,
+                          'scale_max': self.quantizer.scale.max().item() if self.quantizer.scale.numel() > 0 else None,
+                          'zero_shape': self.quantizer.zero.shape})
+            logging.error(f'Original weight stats - min: {W.min()}, max: {W.max()}, mean: {W.mean()}')
+            logging.error(f'Quantized weight stats - min: {Q.min()}, max: {Q.max()}, mean: {Q.mean()}')
+            logging.error(f'NaN count: {torch.isnan(self.layer.weight.data).sum()} / {self.layer.weight.data.numel()}')
+            logging.error('=' * 60)
+            raise ValueError('NaN in weights - check logs for details')
 
     def free(self):
         self.H = None
@@ -227,7 +301,7 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
         (args.nsamples, model.seqlen, model.config.hidden_size), dtype=dtype, device=dev
         # (args.nsamples, 512, model.config.hidden_size), dtype=dtype, device=dev
     )
-    cache = {'i': 0, 'attention_mask': None}
+    cache = {'i': 0, 'attention_mask': None, 'position_ids': None, 'position_embeddings': None}
 
     class Catcher(nn.Module):
         def __init__(self, module):
@@ -236,9 +310,18 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
         def forward(self, inp, **kwargs):
             inps[cache['i']] = inp
             cache['i'] += 1
-            cache['attention_mask'] = kwargs['attention_mask']
-            cache['position_ids'] = kwargs['position_ids']
+            cache['attention_mask'] = kwargs.get('attention_mask')
+            cache['position_ids'] = kwargs.get('position_ids')
+            # Capture position_embeddings for Qwen3-Next
+            cache['position_embeddings'] = kwargs.get('position_embeddings')
             raise ValueError
+        def __getattr__(self, name):
+            # Forward attribute access to the wrapped module
+            # This allows accessing attributes like 'layer_type' for Qwen3-Next
+            try:
+                return super().__getattr__(name)
+            except AttributeError:
+                return getattr(self.module, name)
     layers[0] = Catcher(layers[0])
     for batch in dataloader:
         try:
@@ -269,6 +352,7 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
     outs = torch.zeros_like(inps)
     attention_mask = cache['attention_mask']
     position_ids = cache['position_ids']
+    position_embeddings = cache.get('position_embeddings')  # For Qwen3-Next
 
     quantizers = {}
     # sequential = [
@@ -358,6 +442,8 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
                     expert_layers.append(element)
 
             sequential = attn_layers + expert_layers + down_proj_layers
+
+        # Wrap each layer name in a list for consistent processing
         for k in range(len(sequential)):
             sequential[k]=[sequential[k]]
         routing_scores = []
@@ -375,13 +461,34 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
                 if 'experts' not in name:
                     # print(f'(Skipping {name})', end='  ', flush=True)
                     continue
-                
+
                 # [新增] 额外过滤：排除 Router/Gate 路由权重
                 # 通常路由层的名字以 .gate 结尾 (如 block_sparse_moe.gate 或 mlp.gate)
                 # 而专家内部的 gate_proj 通常包含在 experts...gate_proj 中，不会被此条件误杀
                 if name.endswith('.gate') or name.endswith('shared_expert_gate'):
                     # print(f'(Skipping Router {name})', end='  ', flush=True)
                     continue
+
+                # [新增] 专家编号过滤：只量化0号专家
+                # 解析专家编号，格式如 mlp.experts.0.gate_proj 或 block_sparse_moe.experts.0.w1
+                if 'mlp.experts.' in name or 'block_sparse_moe.experts.' in name:
+                    try:
+                        # 提取专家编号
+                        parts = name.split('.')
+                        expert_idx = -1
+                        for idx, part in enumerate(parts):
+                            if part == 'experts' and idx + 1 < len(parts):
+                                expert_idx = int(parts[idx + 1])
+                                break
+
+                        # # 只量化0号专家，跳过其他专家
+                        # if expert_idx not in [0]:
+                        #     # print(f'(Skipping expert {expert_idx}: {name})', end='  ', flush=True)
+                        #     continue
+                    except (ValueError, IndexError):
+                        # 如果无法解析专家编号，保险起见跳过
+                        print(f'(Warning: Cannot parse expert index from {name}, skipping)', end='  ', flush=True)
+                        continue
                 # -----------------------------------------------------------
 
                 print(f'{name}', end='  ', flush=True)
@@ -444,10 +551,31 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
                         handles.append(subset[name].register_forward_hook(add_batch_shared_score(name,routing_scores_shared)))
                     else:
                         handles.append(subset[name].register_forward_hook(add_batch_qwen(name)))
-            # all sample 
+            # all sample
             # layer.mlp.static_observer=True
             for jjj in range(args.nsamples):
-                outs[jjj] = layer(inps[jjj].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids,cur_sample=jjj)[0]
+                # Set cur_sample for all linear layers in subset (needed for EBSS score tracking)
+                for name in subset:
+                    if name in gptq:
+                        subset[name].cur_sample = jjj
+
+                # Call layer forward with appropriate parameters depending on model type
+                if 'deepseek' in args.model.lower():
+                    # DeepSeek models don't accept cur_sample parameter in their forward function
+                    outs[jjj] = layer(inps[jjj].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids)[0]
+                elif 'qwen3-next' in args.model.lower() or 'qwen3next' in args.model.lower():
+                    # Qwen3-Next requires position_embeddings parameter
+                    if position_embeddings is not None:
+                        outs[jjj] = layer(inps[jjj].unsqueeze(0), attention_mask=attention_mask,
+                                         position_ids=position_ids, position_embeddings=position_embeddings,
+                                         cur_sample=jjj)[0]
+                    else:
+                        # Fallback: try without position_embeddings
+                        outs[jjj] = layer(inps[jjj].unsqueeze(0), attention_mask=attention_mask,
+                                         position_ids=position_ids, cur_sample=jjj)[0]
+                else:
+                    # Other Qwen models and models that accept cur_sample
+                    outs[jjj] = layer(inps[jjj].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids,cur_sample=jjj)[0]
             for h in handles:
                 h.remove()
             for name in subset:
@@ -463,9 +591,15 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
                 # Part 2: Gate 路由逻辑 (必须执行！无论是否量化)
                 # 这部分代码负责填充 routing_scores，绝不能跳过
                 if name=='mlp.gate' or name == 'block_sparse_moe.gate':
+                    # Use model-configured top-k to keep routing stats consistent with forward.
+                    moe_top_k = getattr(getattr(layer, "mlp", None), "top_k", None)
+                    if moe_top_k is None:
+                        moe_top_k = getattr(model.config, "num_experts_per_tok", 4)
+                    moe_top_k = int(moe_top_k)
                     def save_gate_res_qwen(module, inp, out):
                         routing_score = F.softmax(out, dim=1, dtype=torch.float)
-                        routing_score, selected_expert = torch.topk(routing_score, 4, dim=-1)
+                        k = min(moe_top_k, routing_score.shape[-1])
+                        routing_score, selected_expert = torch.topk(routing_score, k, dim=-1)
                         routing_scores.append(routing_score.tolist())
                         selected_experts.append(selected_expert.tolist())
                     def save_gate_res_deepseek(module, inp, out):
@@ -488,7 +622,16 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
                     
                     # 重新跑一遍前向传播来获取路由信息
                     for j in range(args.nsamples):
-                        outs[j] = layer(inps[j].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids)[0]
+                        if 'deepseek' in args.model.lower():
+                            outs[j] = layer(inps[j].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids)[0]
+                        elif 'qwen3-next' in args.model.lower() or 'qwen3next' in args.model.lower():
+                            if position_embeddings is not None:
+                                outs[j] = layer(inps[j].unsqueeze(0), attention_mask=attention_mask,
+                                               position_ids=position_ids, position_embeddings=position_embeddings)[0]
+                            else:
+                                outs[j] = layer(inps[j].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids)[0]
+                        else:
+                            outs[j] = layer(inps[j].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids)[0]
                     
                     routing_scores = torch.tensor(routing_scores)
                     selected_experts = torch.tensor(selected_experts)
@@ -504,14 +647,40 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
                     handles = []
                     handles.append(layer.mlp.shared_expert_gate.register_forward_hook(save_sharedgate_res))
                     for j in range(args.nsamples):
-                        outs[j] = layer(inps[j].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids)[0]
+                        if 'deepseek' in args.model.lower():
+                            outs[j] = layer(inps[j].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids)[0]
+                        elif 'qwen3-next' in args.model.lower() or 'qwen3next' in args.model.lower():
+                            if position_embeddings is not None:
+                                outs[j] = layer(inps[j].unsqueeze(0), attention_mask=attention_mask,
+                                               position_ids=position_ids, position_embeddings=position_embeddings)[0]
+                            else:
+                                outs[j] = layer(inps[j].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids)[0]
+                        else:
+                            outs[j] = layer(inps[j].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids)[0]
                     routing_scores_shared = torch.tensor(routing_scores_shared)
                     for h in handles:
                         h.remove()
         # layer.mlp.static_observer=False
-        
+
         for j in range(args.nsamples):
-            outs[j] = layer(inps[j].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids)[0]
+            if 'deepseek' in args.model.lower():
+                outs[j] = layer(inps[j].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids)[0]
+            elif 'qwen3-next' in args.model.lower() or 'qwen3next' in args.model.lower():
+                if position_embeddings is not None:
+                    outs[j] = layer(inps[j].unsqueeze(0), attention_mask=attention_mask,
+                                   position_ids=position_ids, position_embeddings=position_embeddings)[0]
+                else:
+                    outs[j] = layer(inps[j].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids)[0]
+            else:
+                outs[j] = layer(inps[j].unsqueeze(0), attention_mask=attention_mask, position_ids=position_ids)[0]
+
+            # Check for NaN in layer output - this would propagate to next layer
+            if torch.any(torch.isnan(outs[j])):
+                logging.error(f'NaN detected in layer {i} output for sample {j}!')
+                logging.error(f'Output shape: {outs[j].shape}, NaN count: {torch.isnan(outs[j]).sum()}')
+                # Replace NaN with zeros to prevent propagation (temporary fix)
+                logging.warning(f'Replacing NaN with zeros in layer {i} output to prevent propagation')
+                outs[j] = torch.nan_to_num(outs[j], nan=0.0)
 
         # layers[i] = layer.cpu()
         layers[i] = layer
