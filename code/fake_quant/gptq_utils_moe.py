@@ -283,6 +283,78 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
     position_ids = cache['position_ids']
 
     quantizers = {}
+    gate_up_group_size = getattr(args, "gate_up_group_size", 8)
+    down_group_size = getattr(args, "down_group_size", 4)
+    gate_up_group_size = max(1, int(gate_up_group_size))
+    down_group_size = max(1, int(down_group_size))
+
+    def _chunk_list(items, size):
+        for idx in range(0, len(items), size):
+            yield items[idx : idx + size]
+
+    def _expert_key(name):
+        if "mlp.experts." in name and "shared_expert" not in name:
+            parts = name.split(".")
+            if len(parts) > 2:
+                return ("mlp.experts", parts[2])
+        if "block_sparse_moe.experts." in name:
+            parts = name.split(".")
+            if len(parts) > 2:
+                return ("block_sparse_moe.experts", parts[2])
+        return None
+
+    def _proj_type(name):
+        if "gate_proj" in name or name.endswith(".w1"):
+            return "gate"
+        if "up_proj" in name or name.endswith(".w3"):
+            return "up"
+        if "down_proj" in name or name.endswith(".w2"):
+            return "down"
+        return None
+
+    def _group_expert_modules(sequential):
+        other_groups = []
+        gate_up_map = {}
+        down_map = {}
+        gate_up_order = []
+        down_order = []
+        for name in sequential:
+            key = _expert_key(name)
+            if key is None:
+                other_groups.append([name])
+                continue
+            proj = _proj_type(name)
+            if proj == "down":
+                if key not in down_map:
+                    down_map[key] = name
+                    down_order.append(key)
+                else:
+                    down_map[key] = name
+                continue
+            if proj in ("gate", "up"):
+                if key not in gate_up_map:
+                    gate_up_map[key] = {"gate": None, "up": None}
+                    gate_up_order.append(key)
+                gate_up_map[key][proj] = name
+                continue
+            other_groups.append([name])
+
+        grouped = list(other_groups)
+        for chunk in _chunk_list(gate_up_order, gate_up_group_size):
+            group = []
+            for key in chunk:
+                entry = gate_up_map.get(key, {})
+                if entry.get("gate"):
+                    group.append(entry["gate"])
+                if entry.get("up"):
+                    group.append(entry["up"])
+            if group:
+                grouped.append(group)
+        for chunk in _chunk_list(down_order, down_group_size):
+            group = [down_map[key] for key in chunk if key in down_map]
+            if group:
+                grouped.append(group)
+        return grouped
     # sequential = [
     #             ['self_attn.k_proj.module', 'self_attn.v_proj.module', 'self_attn.q_proj.module'],
     #             ['self_attn.o_proj.module'],
@@ -330,8 +402,7 @@ def gptq_fwrd(model, tokenizer, dataloader, dev, args, bit_mask):
                 else:
                     seq1.append(element)
             sequential = seq1+seq2
-        for k in range(len(sequential)):
-            sequential[k]=[sequential[k]]
+        sequential = _group_expert_modules(sequential)
         routing_scores = []
         selected_experts = []
         routing_scores_shared = []

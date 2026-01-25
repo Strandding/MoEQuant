@@ -1,14 +1,14 @@
 #!/bin/bash
 
 # 设置可见的 GPU
-export CUDA_VISIBLE_DEVICES=0,1
+export CUDA_VISIBLE_DEVICES=7
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
 # 定义模型路径和结果输出路径（方便后续修改）
 MODEL_PATH="/dataset/common/pretrain_model/Qwen1.5-MoE-A2.7B"
-QMODEL_PATH="/dataset/common/quant_model/moequant_qwen15_base_w2_selfebss_nsample_4_g1.pth"
+QMODEL_PATH="/dataset/common/quant_model/moequant_qwen15_w2_selfebss_nsample_128_groupsize128_rotate.pth"
 RES_DIR="./res_moe_qwen15_base_w2_selfebss_nsample_4"
-LOG_FILE="./output_log/qwen15_w2_nsample_4_nogroup_${TIMESTAMP}.txt"
+LOG_FILE="./output_log/eval_qwen15_w2_nsample_4_nogroup_${TIMESTAMP}.txt"
 
 echo "开始执行量化测试..."
 
@@ -25,7 +25,7 @@ python fake_quant/main.py \
 if [ $? -eq 0 ]; then
     echo "量化测试完成，开始运行后续任务..."
     # 执行第二个 Python 任务
-    python run.py 0 1
+    #python run.py 7
 else
     echo "警告：第一个任务失败，请检查日志 $LOG_FILE"
     exit 1

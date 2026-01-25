@@ -9,7 +9,7 @@ Arguments:
  'act_order': False,
  'bsz': 1,
  'cal_dataset': 'wikitext2',
- 'calib_path': './EBSS_data/ebss_qwen15_selfbuild_merged.jsonl',
+ 'calib_path': './EBSS_data/ebss_qwen3moe_selfbuild_merged.jsonl',
  'capture_layer_io': False,
  'distribute': False,
  'do_smooth': False,
@@ -17,7 +17,7 @@ Arguments:
  'fp32_had': True,
  'fully_quant': False,
  'hf_token': None,
- 'human_res': './res_moe_qwen15_base_w3_selfebss_nsample_128',
+ 'human_res': './res_moe_qwen3moe_base_w1_selfebss_nsample_128',
  'int8_down_proj': False,
  'k_asym': False,
  'k_bits': 16,
@@ -28,7 +28,7 @@ Arguments:
  'lm_eval': False,
  'lm_eval_batch_size': 128,
  'load_qmodel_path': None,
- 'model': '/dataset/common/pretrain_model/Qwen1.5-MoE-A2.7B',
+ 'model': '/dataset/common/pretrain_model/Qwen3-30B-A3B-Base',
  'nsamples': 128,
  'online_hadamard': False,
  'percdamp': 0.01,
@@ -37,9 +37,9 @@ Arguments:
  'rotate': True,
  'rotate_mode': 'hadamard',
  'rotation_seed': -1,
- 'save_name': '20260123_144959',
+ 'save_name': '20260123_195127',
  'save_path': '/export/home2/zihan/MoEQuant/code/log',
- 'save_qmodel_path': '/dataset/common/quant_model/moequant_qwen15_w3_selfebss_nsample_128_groupsize128_rotate.pth',
+ 'save_qmodel_path': '/dataset/common/quant_model/moequant_qwen3moe_w1_wasym_selfebss_nsample_128_groupsize128_rotate.pth',
  'seed': 0,
  'shared_expert_act_calib': False,
  'static_test': False,
@@ -53,8 +53,8 @@ Arguments:
  'v_bits': 16,
  'v_clip_ratio': 1.0,
  'v_groupsize': -1,
- 'w_asym': False,
- 'w_bits': 3,
+ 'w_asym': True,
+ 'w_bits': 1,
  'w_clip': True,
  'w_groupsize': 128,
  'w_rtn': False,
@@ -64,11 +64,8 @@ Arguments:
 ------------------------------------------------------------
 ---> Loading model with device_map=auto for multi-GPU support...
 We will use 90% of the memory on device 0 for storing the model, and 10% for the buffer to avoid OOM. You can set `max_memory` in to a higher value to use more memory (at your own risk).
----> Loading /dataset/common/pretrain_model/Qwen1.5-MoE-A2.7B Model (class: Qwen2MoeForCausalLM) with seq_len: 2048
+---> Loading /dataset/common/pretrain_model/Qwen3-30B-A3B-Base Model (class: Qwen3MoeForCausalLM) with seq_len: 2048
 ---> Using model-level rotary_emb for quantization
-GPU memory (from rotate_model): 34.25 -> 27.29 GB (-6.96 GB)
-GPU memory (from main): 27.29 -> 27.27 GB (-0.02 GB)
+GPU memory (from rotate_model): 64.43 -> 57.47 GB (-6.96 GB)
+GPU memory (from main): 57.47 -> 57.47 GB (0.00 GB)
 -----GPTQ Quantization-----
-GPU memory (from gptq_fwrd): 29.33 -> 29.33 GB (0.00 GB)
------GPTQ Quantization Done-----
-

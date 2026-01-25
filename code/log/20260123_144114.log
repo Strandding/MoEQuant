@@ -96,3 +96,6 @@ WARNING: Skipping attention input rotation for DeepseekV2Attention: unsupported 
 WARNING: Skipping OV projection rotation for DeepseekV2Attention: no v_proj found.
 GPU memory (from main): 32.04 -> 32.03 GB (-0.01 GB)
 -----GPTQ Quantization-----
+GPU memory (from gptq_fwrd): 33.05 -> 33.05 GB (0.00 GB)
+-----GPTQ Quantization Done-----
+
