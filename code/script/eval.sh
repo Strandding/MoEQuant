@@ -11,7 +11,7 @@ model_map["Mixtral-8x7B-v0.1"]="mixtral"
 model_map["DeepSeek-V2-Lite"]="dsv2"
 
 # 设置可见的 GPU
-export CUDA_VISIBLE_DEVICES=4
+export CUDA_VISIBLE_DEVICES=0
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
 # 定义模型路径和结果输出路径（方便后续修改）

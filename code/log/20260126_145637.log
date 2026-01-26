@@ -67,3 +67,6 @@ Arguments:
 GPU memory (from rotate_model): 93.63 -> 89.29 GB (-4.34 GB)
 GPU memory (from main): 90.72 -> 89.41 GB (-1.31 GB)
 -----GPTQ Quantization-----
+GPU memory (from gptq_fwrd): 98.57 -> 98.57 GB (0.00 GB)
+-----GPTQ Quantization Done-----
+

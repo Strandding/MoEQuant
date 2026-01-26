@@ -14,7 +14,7 @@ model_map["DeepSeek-V2-Lite"]="dsv2"
 W_BITS=1
 N_SAMPLES=128
 gsize=128
-model_name='Mixtral-8x7B-v0.1'
+model_name='Qwen3-Next-80B-A3B-Instruct'
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
 GPUS=(6 7)

@@ -1,4 +1,4 @@
-import torch, torch.nn as nn, torch.nn.functional as F, math, warnings, inspect
+import torch, torch.nn as nn, torch.nn.functional as F, math, warnings, inspect, logging
 from typing import *
 from transformers.models.llama.modeling_llama import (
     LlamaRotaryEmbedding,
@@ -12,6 +12,11 @@ from transformers.models.llama.modeling_llama import (
 from transformers.models.llama.configuration_llama import LlamaConfig
 from transformers.activations import ACT2FN
 from .quant_ops import *
+
+logger = logging.getLogger(__name__)
+_DIAG_QNORM_REPORTED = False
+_DIAG_CACHE_REPORTED = False
+_DIAG_POSITION_EMB_REPORTED = False
 
 def build_rotary_matrix(cos, sin):
     bsz, seq_len, head_dim = cos.size()
@@ -184,6 +189,11 @@ class QuantAttention(nn.Module):
     def __init__(self, org_module: LlamaAttention, config: LlamaConfig, args, is_qwen3_style: bool = False):
         super().__init__()
 
+        global _DIAG_QNORM_REPORTED
+        if not _DIAG_QNORM_REPORTED and (hasattr(org_module, "q_norm") or hasattr(org_module, "k_norm")):
+            logger.info("QuantAttention: detected q_norm/k_norm; applying RMSNorm on q/k heads.")
+            _DIAG_QNORM_REPORTED = True
+
         self._is_qwen3_style = is_qwen3_style
         self.layer_idx = org_module.layer_idx
         self.hidden_size = config.hidden_size
@@ -209,6 +219,14 @@ class QuantAttention(nn.Module):
             args.weight_quant_params,
             args.k_proj_quant_params,
         )
+        if hasattr(org_module, "q_norm"):
+            self.q_norm = QuantRMSNorm(org_module.q_norm, dict(bits=32))
+        else:
+            self.q_norm = None
+        if hasattr(org_module, "k_norm"):
+            self.k_norm = QuantRMSNorm(org_module.k_norm, dict(bits=32))
+        else:
+            self.k_norm = None
         self.ropeq = QuantROPE(act_quant_params=args.ropeq_quant_params)
         self.ropek = QuantROPE(act_quant_params=args.ropek_quant_params)
         self.v_proj = QuantLinear(
@@ -253,9 +271,18 @@ class QuantAttention(nn.Module):
         past_key_value: Optional[Cache] = None,
         output_attentions: bool = False,
         use_cache: bool = False,
+        cache_position: Optional[torch.LongTensor] = None,
         position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         **kwargs,
     ):  
+        global _DIAG_POSITION_EMB_REPORTED
+        if self._is_qwen3_style and not _DIAG_POSITION_EMB_REPORTED:
+            logger.info(
+                "QuantAttention: qwen3-style forward position_embeddings=%s past_key_value=%s",
+                position_embeddings is not None,
+                past_key_value is not None,
+            )
+            _DIAG_POSITION_EMB_REPORTED = True
         if torch.isnan(hidden_states).any():
             breakpoint()
         bsz, q_len, _ = hidden_states.size()
@@ -275,6 +302,10 @@ class QuantAttention(nn.Module):
         ).transpose(
             1, 2
         )  # b h l d
+        if self.q_norm is not None:
+            query_states = self.q_norm(query_states)
+        if self.k_norm is not None:
+            key_states = self.k_norm(key_states)
         kv_seq_len = q_len
         if past_key_value is not None:
             kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
@@ -309,6 +340,8 @@ class QuantAttention(nn.Module):
 
         if past_key_value is not None:
             cache_kwargs = {"sin": sin, "cos": cos}
+            if cache_position is not None:
+                cache_kwargs["cache_position"] = cache_position
             key_states, value_states = past_key_value.update(
                 key_states, value_states, self.layer_idx, cache_kwargs
             )
@@ -341,7 +374,6 @@ class QuantDecoderLayer(nn.Module):
         self.hidden_size = config.hidden_size
         ori_layer_name = ori_layer.__class__.__name__
         self._is_qwen3_style = 'Qwen3Moe' in ori_layer_name or 'Qwen3Next' in ori_layer_name
-        self._return_single_tensor = self._is_qwen3_style
         self.self_attn = QuantAttention(
             ori_layer.self_attn,
             config=config,
@@ -369,6 +401,7 @@ class QuantDecoderLayer(nn.Module):
         position_ids: Optional[torch.LongTensor] = None,
         past_key_value: Optional[Tuple[torch.Tensor]] = None,
         output_attentions: Optional[bool] = False,
+        output_router_logits: Optional[bool] = False,
         use_cache: Optional[bool] = False,
         cur_sample: int = 0,
         position_embeddings: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
@@ -376,7 +409,18 @@ class QuantDecoderLayer(nn.Module):
     ) -> Tuple[
         torch.FloatTensor, Optional[Tuple[torch.FloatTensor, torch.FloatTensor]]
     ]:  
-        # print(f"yes_decoder ")
+        global _DIAG_CACHE_REPORTED
+        if self._is_qwen3_style and not _DIAG_CACHE_REPORTED:
+            cache_position = kwargs.get("cache_position")
+            if cache_position is not None:
+                logger.info(
+                    "QuantDecoderLayer: cache_position provided (shape=%s, device=%s); use_cache=%s past_key_value=%s",
+                    tuple(cache_position.shape),
+                    cache_position.device,
+                    use_cache,
+                    type(past_key_value).__name__ if past_key_value is not None else None,
+                )
+                _DIAG_CACHE_REPORTED = True
         if isinstance(hidden_states, tuple):
             hidden_states = hidden_states[0]
         if "padding_mask" in kwargs:
@@ -413,6 +457,7 @@ class QuantDecoderLayer(nn.Module):
         if (hidden_states.max() < 1e-6).item():
             breakpoint()
         # Self Attention
+        cache_position = kwargs.get("cache_position")
         hidden_states, self_attn_weights, present_key_value = self.self_attn(
             hidden_states=hidden_states,
             attention_mask=attention_mask,
@@ -420,6 +465,7 @@ class QuantDecoderLayer(nn.Module):
             past_key_value=past_key_value,
             output_attentions=output_attentions,
             use_cache=use_cache,
+            cache_position=cache_position,
             position_embeddings=position_embeddings,
         )
         if (hidden_states.max() < 1e-6).item():
@@ -436,21 +482,25 @@ class QuantDecoderLayer(nn.Module):
         hidden_states = self.post_attention_layernorm(hidden_states)
         if (hidden_states.max() < 1e-6).item():
             breakpoint()
-        hidden_states = self.mlp(hidden_states,cur_sample)[0]
+        mlp_out = self.mlp(hidden_states, cur_sample)
+        if isinstance(mlp_out, tuple):
+            hidden_states, router_logits = mlp_out
+        else:
+            hidden_states = mlp_out
+            router_logits = None
         if (hidden_states.max() < 1e-6).item():
             breakpoint()
         if torch.isnan(hidden_states).any():
             breakpoint()
         hidden_states = self.resadd2(residual, hidden_states)
 
-        if self._return_single_tensor:
-            return hidden_states
-
         outputs = (hidden_states,)
         if output_attentions:
             outputs += (self_attn_weights,)
-        if use_cache:
+        if use_cache and not self._is_qwen3_style:
             outputs += (present_key_value,)
+        if output_router_logits:
+            outputs += (router_logits,)
         return outputs
 
     # def set_quant_state(
