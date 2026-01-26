@@ -161,11 +161,13 @@ def compute_ppl_hf_strided(
     n_tokens = 0
     prev_end_loc = 0
 
-    for begin_loc in tqdm(
+    pbar = tqdm(
         range(0, seq_len, stride),
         desc=f"Evaluate {test_name}...",
         dynamic_ncols=True,
-    ):
+    )
+
+    for begin_loc in pbar:
         end_loc = min(begin_loc + max_length, seq_len)
         trg_len = end_loc - prev_end_loc  # may differ on last step
 
@@ -208,6 +210,11 @@ def compute_ppl_hf_strided(
         if num_loss_tokens > 0:
             nll_sum += loss_sum.item()
             n_tokens += num_loss_tokens
+
+        # Update progress bar with current PPL
+        if n_tokens > 0:
+            current_ppl = math.exp(nll_sum / n_tokens)
+            pbar.set_postfix({"PPL": f"{current_ppl:.2f}"})
 
         prev_end_loc = end_loc
         if end_loc == seq_len:
