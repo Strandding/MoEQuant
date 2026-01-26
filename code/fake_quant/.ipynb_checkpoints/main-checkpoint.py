@@ -1,4 +1,6 @@
 import os,sys
+import logging
+import math
 import utils
 import torch
 import model_utils
@@ -24,6 +26,9 @@ from evaluation import eval_lm
 from tqdm import tqdm
 from datasets import load_dataset
 import random
+
+logger = logging.getLogger(__name__)
+
 def build_prompt(text):
     return text 
 
@@ -43,7 +48,13 @@ def eval_ppl_c4(model,tokenizer,seqlen=2048,limit=-1):
         j = i + seqlen
         valenc.append(tmp.input_ids[:, i:j])
     c4_testloader = torch.hstack(valenc)
-    c4_ppl = eval_ppl_sliding(model, c4_testloader, window_len=512, stride=512, limit=limit, data_name="c4")
+    c4_ppl = compute_ppl_hf_strided(
+        model,
+        c4_testloader,
+        test_name="c4",
+        max_length=2048,
+        stride=512,
+    )
     return c4_ppl
 
 
@@ -117,92 +128,103 @@ def _forward_logits(model, batch):
 
 
 @torch.no_grad()
-def eval_ppl_sliding(model, test_loader, window_len=512, stride=512, limit=-1, data_name="wiki"):
+def compute_ppl_hf_strided(
+    model,
+    encodings_input_ids: torch.Tensor,
+    test_name: str,
+    max_length: int,
+    stride: int = 512,
+):
     """
-    HF-style strided sliding-window perplexity (multi-GPU safe):
-      - window_len = max_length
-      - stride = stride
-      - only newly introduced tokens contribute to NLL
-      - DOES NOT move the entire encoding to GPU (avoids OOM)
-      - moves each window slice to embedding device (device_map='auto' safe)
-
-    Args:
-      test_loader:
-        - if data_name=='wiki': dict with 'input_ids' (as in your data_utils loader)
-        - else: LongTensor [1, N] or [N]
+    HF-recommended strided sliding-window PPL.
+    Only tokens newly introduced by each stride contribute to the loss.
     """
     model.eval()
 
-    # 1) Get encodings on CPU (do NOT .to(cuda) the whole thing)
-    enc = test_loader["input_ids"] if data_name == "wiki" else test_loader
-    if enc.dim() == 1:
-        enc = enc.unsqueeze(0)  # [1, N]
-    # Ensure on CPU for safety; slicing stays cheap
-    if enc.is_cuda:
-        enc = enc.cpu()
+    if encodings_input_ids.dim() == 1:
+        encodings_input_ids = encodings_input_ids.unsqueeze(0)
+    if encodings_input_ids.is_cuda:
+        encodings_input_ids = encodings_input_ids.cpu()
 
-    # 2) Determine where inputs should live (embedding device)
-    input_device = get_input_device(model)
+    # Clamp to model context limit if present.
+    model_max = getattr(model.config, "max_position_embeddings", None)
+    if model_max is None:
+        model_max = getattr(model.config, "n_positions", None)
+    if model_max is not None:
+        max_length = min(max_length, int(model_max))
 
-    seq_len_total = enc.size(1)
-    stride = max(1, min(stride, window_len))
+    stride = max(1, min(stride, max_length))
+    device = get_input_device(model)
 
-    # 3) Build window end locations (end-based sliding)
-    end_locs = list(range(window_len, seq_len_total + 1, stride))
-    if len(end_locs) == 0:
-        end_locs = [seq_len_total]
-    elif end_locs[-1] != seq_len_total:
-        end_locs.append(seq_len_total)
+    seq_len = encodings_input_ids.size(1)
+    nll_sum = 0.0
+    n_tokens = 0
+    prev_end_loc = 0
 
-    if limit is not None and limit >= 0:
-        end_locs = end_locs[: limit + 1]
+    pbar = tqdm(
+        range(0, seq_len, stride),
+        desc=f"Evaluate {test_name}...",
+        dynamic_ncols=True,
+    )
 
-    # 4) Accumulate on CPU scalars (avoid binding to a specific GPU)
-    total_nll = 0.0
-    total_tokens = 0
-    prev_end = 0
+    for begin_loc in pbar:
+        end_loc = min(begin_loc + max_length, seq_len)
+        trg_len = end_loc - prev_end_loc  # may differ on last step
 
-    with tqdm(range(len(end_locs))) as pbar:
-        pbar.set_description_str("evaling ppl (sliding-window)")
-        for k in pbar:
-            end_loc = end_locs[k]
-            begin_loc = max(0, end_loc - window_len)
+        input_ids = encodings_input_ids[:, begin_loc:end_loc].to(device)
+        target_ids = input_ids.clone()
+        target_ids[:, :-trg_len] = -100  # ignore context tokens
 
-            # window slice -> move to embedding device only
-            input_ids = enc[:, begin_loc:end_loc].to(input_device, non_blocking=True)
+        # target_ids: [1, seq_len]
+        if (target_ids != -100).sum() == 0:
+            continue
 
-            # tokens newly introduced since last step
-            trg_len = end_loc - prev_end
-            prev_end = end_loc
+        outputs = model(input_ids)
+        logits = outputs.logits  # [B, T, V]
 
-            target_ids = input_ids.clone()
-            if trg_len < target_ids.size(1):
-                target_ids[:, :-trg_len] = -100
+        # HF causal LM loss: shift by 1
+        shift_logits = logits[:, :-1, :].contiguous()
+        shift_labels = target_ids[:, 1:].contiguous()
+        if shift_labels.device != shift_logits.device:
+            shift_labels = shift_labels.to(shift_logits.device)
 
-            # Forward + shift
-            logits = _forward_logits(model, input_ids)  # [1, L, V]
-            shift_logits = logits[:, :-1, :].contiguous()
-            shift_labels = target_ids[:, 1:].contiguous()
+        vocab = shift_logits.size(-1)
 
-            # valid token count
-            num_loss_tokens = int((shift_labels != -100).sum().item())
-            if num_loss_tokens > 0:
-                loss = F.cross_entropy(
-                    shift_logits.view(-1, shift_logits.size(-1)),
-                    shift_labels.view(-1),
-                    ignore_index=-100,
-                    reduction="sum",
-                )
-                total_nll += float(loss.item())
-                total_tokens += num_loss_tokens
+        # Mask out-of-vocab labels (robust for Mixtral/Mistral v0.1)
+        oob = (shift_labels != -100) & (
+            (shift_labels < 0) | (shift_labels >= vocab)
+        )
+        if oob.any():
+            shift_labels[oob] = -100
+            logger.warning("Warning: out-of-vocab labels ignored")
 
-            if total_tokens > 0:
-                tmp_ppl = float(torch.exp(torch.tensor(total_nll / total_tokens)).item())
-                pbar.set_postfix_str(f"--{tmp_ppl:4.4}")
+        # Cross-entropy over valid tokens
+        loss_sum = F.cross_entropy(
+            shift_logits.view(-1, vocab),
+            shift_labels.view(-1),
+            ignore_index=-100,
+            reduction="sum",
+        )
 
-    if total_tokens == 0:
-        return float("inf")
-    return float(torch.exp(torch.tensor(total_nll / total_tokens)).item())
+        num_loss_tokens = (shift_labels != -100).sum().item()
+        if num_loss_tokens > 0:
+            nll_sum += loss_sum.item()
+            n_tokens += num_loss_tokens
+
+        # 实时显示当前PPL
+        if n_tokens > 0:
+            current_ppl = math.exp(nll_sum / n_tokens)
+            pbar.set_postfix({
+                'PPL': f'{current_ppl:.4f}',
+                'tokens': n_tokens
+            })
+
+        prev_end_loc = end_loc
+        if end_loc == seq_len:
+            break
+
+    avg_nll = nll_sum / max(1, n_tokens)
+    return math.exp(avg_nll)
 
 
 
@@ -298,6 +320,8 @@ def main():
             
         elif not args.w_rtn: # GPTQ Weight Quantization
             # assert "llama" in args.model, "Only llama is supported for GPTQ!"
+            calib_seqlen = 2048
+            print("calib_seqlen:", calib_seqlen)
             if args.EBSS_calib:
                 dataset = []
                 cnt = 0
@@ -314,14 +338,19 @@ def main():
                     trainloader = data_utils.get_loaders(
                         args.cal_dataset, nsamples=args.nsamples,
                         seed=args.seed, model=args.model,
-                        seqlen=2048, eval_mode=False
+                        seqlen=calib_seqlen, eval_mode=False
                     )
             # load bit settings
             bit_settings = None
-            if args.AGQ_GPTQ:
-                quantizers = gptq_utils_moe.gptq_fwrd(model, tokenizer, trainloader, utils.DEV, args, bit_settings)
-            else:
-                quantizers = gptq_utils.gptq_fwrd(model, tokenizer, trainloader, utils.DEV, args, bit_settings)
+            old_seqlen = model.seqlen
+            model.seqlen = calib_seqlen
+            try:
+                if args.AGQ_GPTQ:
+                    quantizers = gptq_utils_moe.gptq_fwrd(model, tokenizer, trainloader, utils.DEV, args, bit_settings)
+                else:
+                    quantizers = gptq_utils.gptq_fwrd(model, tokenizer, trainloader, utils.DEV, args, bit_settings)
+            finally:
+                model.seqlen = old_seqlen
             save_dict["w_quantizers"] = quantizers
         else: # RTN Weight Quantization
             bit_settings=None
@@ -332,10 +361,21 @@ def main():
             save_dict["model"] = model.state_dict()
             torch.save(save_dict, args.save_qmodel_path)
 
-    if args.quant_test:  
+    if args.quant_test:
+        # Only call set_quant_state if the layer supports it (e.g., QuantDecoderLayer)
+        for layer in model.model.layers:
+            if hasattr(layer, 'set_quant_state'):
+                layer.set_quant_state(use_weight_quant=True, use_act_quant=False)
         tokenizer = transformers.AutoTokenizer.from_pretrained(args.model, use_fast=False)  
         # ppl
-        ppl = eval_ppl_sliding(model, test_loader, window_len=512, stride=512, limit=-1, data_name="wiki")
+        encodings_input_ids = test_loader["input_ids"] if isinstance(test_loader, dict) else getattr(test_loader, "input_ids", test_loader)
+        ppl = compute_ppl_hf_strided(
+            model,
+            encodings_input_ids,
+            test_name="wiki",
+            max_length=2048,
+            stride=512,
+        )
         print("wikitext2 ppl is:", ppl)
         ppl_c4 = eval_ppl_c4(model,tokenizer,seqlen=2048, limit=-1)
         print ('c4 ppl is: ', ppl_c4)
@@ -398,3 +438,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+logger = logging.getLogger(__name__)

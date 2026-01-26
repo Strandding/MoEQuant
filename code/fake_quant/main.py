@@ -211,10 +211,13 @@ def compute_ppl_hf_strided(
             nll_sum += loss_sum.item()
             n_tokens += num_loss_tokens
 
-        # Update progress bar with current PPL
+        # 实时显示当前PPL
         if n_tokens > 0:
             current_ppl = math.exp(nll_sum / n_tokens)
-            pbar.set_postfix({"PPL": f"{current_ppl:.2f}"})
+            pbar.set_postfix({
+                'PPL': f'{current_ppl:.4f}',
+                'tokens': n_tokens
+            })
 
         prev_end_loc = end_loc
         if end_loc == seq_len:
@@ -358,7 +361,11 @@ def main():
             save_dict["model"] = model.state_dict()
             torch.save(save_dict, args.save_qmodel_path)
 
-    if args.quant_test:  
+    if args.quant_test:
+        # Only call set_quant_state if the layer supports it (e.g., QuantDecoderLayer)
+        for layer in model.model.layers:
+            if hasattr(layer, 'set_quant_state'):
+                layer.set_quant_state(use_weight_quant=True, use_act_quant=False)
         tokenizer = transformers.AutoTokenizer.from_pretrained(args.model, use_fast=False)  
         # ppl
         encodings_input_ids = test_loader["input_ids"] if isinstance(test_loader, dict) else getattr(test_loader, "input_ids", test_loader)

@@ -11,13 +11,13 @@ model_map["Mixtral-8x7B-v0.1"]="mixtral"
 model_map["DeepSeek-V2-Lite"]="dsv2"
 
 # ================= 配置区域 =================
-W_BITS=2
+W_BITS=1
 N_SAMPLES=128
 gsize=128
 model_name='Mixtral-8x7B-v0.1'
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
-GPUS=(2 3)
+GPUS=(6 7)
 GPU_STR=$(IFS=,; echo "${GPUS[*]}")
 export CUDA_VISIBLE_DEVICES=$GPU_STR
 # ===========================================

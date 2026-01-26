@@ -11,14 +11,14 @@ model_map["Mixtral-8x7B-v0.1"]="mixtral"
 model_map["DeepSeek-V2-Lite"]="dsv2"
 
 # 设置可见的 GPU
-export CUDA_VISIBLE_DEVICES=0,1
+export CUDA_VISIBLE_DEVICES=0,1,2,3
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
 # 定义模型路径和结果输出路径（方便后续修改）
-MODEL_PATH="/dataset/common/pretrain_model/Qwen1.5-MoE-A2.7B"
-QMODEL_PATH="/dataset/common/quant_model/moequant_qwen15_w2_selfebss_nsample_128_groupsize128_rotate.pth"
-RES_DIR="./res_moe_qwen15_base_w2_selfebss_nsample_128"
-LOG_FILE="./output_log/eval_qwen15_w2_nsample_128_group128_${TIMESTAMP}.txt"
+MODEL_PATH="/dataset/common/pretrain_model/Mixtral-8x7B-v0.1"
+QMODEL_PATH="/dataset/common/quant_model/moequant_mixtral_w2_selfebss_nsample_128_groupsize128_rotate.pth"
+RES_DIR="./res_moe_mixtral_base_w2_selfebss_nsample_128"
+LOG_FILE="./output_log/eval_mixtral_w2_nsample_128_group128_${TIMESTAMP}.txt"
 
 echo "开始执行量化测试..."
 
@@ -28,6 +28,7 @@ python fake_quant/main.py \
     --model "$MODEL_PATH" \
     --load_qmodel_path "$QMODEL_PATH" \
     --quant_test \
+    --w_bits 2 \
     --human_res "$RES_DIR" \
     > "$LOG_FILE" 2>&1
 
